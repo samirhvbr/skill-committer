@@ -137,15 +137,19 @@ bump.
 | Cron **30 min** | Rede de segurança — pega sessões mortas sem `Stop` e trabalho manual. **Decidido: crontab do Linux** (rotinas agendadas do Claude Code rodam na nuvem, não enxergam `~/x`) |
 | Janela quieta 5 min | Guarda transversal dos dois |
 
-Linha de crontab do piloto (instalada pelo Samir; rodar o script uma vez manual
-antes, para criar `~/.local/state/committer/`):
+Linha de crontab do piloto — **na crontab do usuário `samir`** (`crontab -e` sem
+sudo), nunca na do root: os repos, o `gh auth`, a chave SSH e o login do Claude
+(modo `subscription`) são do usuário, e o estado em `~/.local/state/committer/`
+sairia com dono errado.
 
 ```cron
-*/30 * * * * PATH=/usr/bin:/bin /usr/bin/python3 /home/samir/x/skill-COMMITTER/skill/committer/committer_cycle.py /home/samir/x/skill-COMMITTER /home/samir/x/SHVIA/SHVIA-WEB >> /home/samir/.local/state/committer/cron.log 2>&1
+*/30 * * * * PATH=/home/samir/.local/bin:/usr/bin:/bin /usr/bin/python3 /home/samir/x/skill-COMMITTER/skill/committer/committer_cycle.py /home/samir/x/skill-COMMITTER /home/samir/x/SHVIA/SHVIA-WEB >> /home/samir/.local/state/committer/cron.log 2>&1
 ```
 
-(`PATH` explícito porque a ponte de credencial invoca `gh`, e o PATH do cron é
-mínimo. `gh` vive em `/usr/bin` nesta máquina.)
+(`PATH` explícito porque o PATH do cron é mínimo: a ponte de credencial invoca
+`gh` — `/usr/bin` — e o fallback `subscription` invoca `claude` —
+`/home/samir/.local/bin`, um symlink por versão. Sem esse primeiro diretório o
+fallback falharia só no cron, nunca no teste manual.)
 
 Lock por repo (arquivo em estado local): dois disparos simultâneos (Stop + cron) →
 o segundo desiste em silêncio. O mesmo lock ordena COMMITTER × AUDITOR — nunca os
