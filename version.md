@@ -1,6 +1,6 @@
 # Versão — skill-COMMITTER
 
-**Versão atual:** `0.3.0`
+**Versão atual:** `0.3.1`
 
 > Este arquivo é a **fonte da verdade** da versão do projeto. Qualquer lugar que
 > precise exibir ou reportar a versão extrai o **primeiro número semver (`X.Y.Z`)**
@@ -66,6 +66,21 @@ COMMITTER usar a versão atual no fallback sem inventar número (ADR-002).
 ## 3. Changelog
 
 > Ordem decrescente (mais recente no topo).
+
+### `0.3.1` — 2026-07-29 — Sweep de marcadores nos 24 repos da casa; o cron passa a chamar o run.sh
+
+- **Marcadores instalados** em 24 repositórios (todos os nossos com `version.md`;
+  forks de terceiro e o balde `000/` ficam fora por regra, não por esquecimento).
+  Repos sem `version.md` **não** receberam marcador: sem ele não há formato da casa
+  e o ciclo pararia em "fallback necessário" em todo disparo.
+- **Gatilho deixa de carregar caminhos** (`SPEC.md` §3): a crontab chama
+  `~/x/GIT/run.sh`, que varre a árvore e entrega ao ciclo só quem tem marcador.
+  Antes a lista era fixa na linha do cron — a skill só rodava nos dois repos do
+  piloto, e repo novo exigia editar a crontab.
+- §1.1 registra a divisão: a **varredura** é do sweeper, a **elegibilidade**
+  continua sendo do marcador.
+- Doc de estado corrigida: a F4 ainda deve o **bloco PS** nos `CLAUDE.md`/
+  `AGENTS.md` — enquanto ele não for, os agentes seguem commitando como antes.
 
 ### `0.3.0` — 2026-07-29 — F3: fallback com validador anti-injeção, três modos de auth e teto diário
 

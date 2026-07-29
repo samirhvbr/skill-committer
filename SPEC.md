@@ -16,6 +16,11 @@ A cada disparo, para cada repo participante:
 Só entra no ciclo o repo com `.committer.yml` na raiz (ADR-004). Sem marcador → o
 repo **não existe** para o COMMITTER. Nunca varrer `~/x` incondicionalmente.
 
+Quem descobre os candidatos é o **`~/x/GIT/run.sh`** (§3): ele varre a árvore, mas
+entrega ao ciclo **apenas** os repos com marcador, e nunca os do balde de terceiros
+(`000/`) — nem que um marcador apareça lá por engano num clone. A varredura é do
+sweeper; a elegibilidade continua sendo do marcador.
+
 ### 1.2 Sanidade
 Qualquer um destes → **no-op com aviso**, nunca tentativa de resolver:
 - merge, rebase, cherry-pick ou bisect em andamento (`.git/MERGE_HEAD`,
@@ -137,19 +142,27 @@ bump.
 | Cron **30 min** | Rede de segurança — pega sessões mortas sem `Stop` e trabalho manual. **Decidido: crontab do Linux** (rotinas agendadas do Claude Code rodam na nuvem, não enxergam `~/x`) |
 | Janela quieta 5 min | Guarda transversal dos dois |
 
-Linha de crontab do piloto — **na crontab do usuário `samir`** (`crontab -e` sem
-sudo), nunca na do root: os repos, o `gh auth`, a chave SSH e o login do Claude
-(modo `subscription`) são do usuário, e o estado em `~/.local/state/committer/`
-sairia com dono errado.
+Linha de crontab — **na crontab do usuário `samir`** (`crontab -e` sem sudo), nunca
+na do root: os repos, o `gh auth`, a chave SSH e o login do Claude (modo
+`subscription`) são do usuário, e o estado em `~/.local/state/committer/` sairia com
+dono errado.
 
 ```cron
-*/30 * * * * PATH=/home/samir/.local/bin:/usr/bin:/bin /usr/bin/python3 /home/samir/x/skill-COMMITTER/skill/committer/committer_cycle.py /home/samir/x/skill-COMMITTER /home/samir/x/SHVIA/SHVIA-WEB >> /home/samir/.local/state/committer/cron.log 2>&1
+*/30 * * * * PATH=/home/samir/.local/bin:/usr/bin:/bin /home/samir/x/GIT/run.sh >> /home/samir/.local/state/committer/cron.log 2>&1
 ```
+
+O cron chama o **`run.sh`** (repo `GIT`, o mesmo lugar do `git_pull.sh`), não o ciclo
+direto. O ciclo recebe repositórios por argumento, então a linha antiga carregava a
+lista fixa do piloto — **a skill só rodava onde o cron apontava**, e repo novo exigia
+editar a crontab. O `run.sh` descobre os participantes a cada disparo pelo marcador
+`.committer.yml` (e pula o balde de terceiros `000/` sempre). Entrar na varredura
+passa a ser criar o marcador; a crontab não se toca mais.
 
 (`PATH` explícito porque o PATH do cron é mínimo: a ponte de credencial invoca
 `gh` — `/usr/bin` — e o fallback `subscription` invoca `claude` —
 `/home/samir/.local/bin`, um symlink por versão. Sem esse primeiro diretório o
-fallback falharia só no cron, nunca no teste manual.)
+fallback falharia **só no cron**, nunca no teste manual — o modo de falha mais caro
+de diagnosticar que esta linha tem.)
 
 Lock por repo (arquivo em estado local): dois disparos simultâneos (Stop + cron) →
 o segundo desiste em silêncio. O mesmo lock ordena COMMITTER × AUDITOR — nunca os

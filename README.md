@@ -78,8 +78,10 @@ paralelas no mesmo repo.
 
 ## Mudança de hábito nos agentes principais
 
-Bloco a incluir nos `CLAUDE.md`/`AGENTS.md` dos repos participantes (sweep após o
-piloto — F4):
+Bloco a incluir nos `CLAUDE.md`/`AGENTS.md` dos repos participantes. Os **marcadores**
+já foram instalados nos 24 repos (29/07) e a varredura é do `~/x/GIT/run.sh`; **este
+bloco ainda não foi para os repos** — é ele que muda o hábito dos agentes, e enquanto
+não for, o fluxo antigo (o agente commita) continua valendo:
 
 > **PS — Commits:** Existindo a skill **COMMITTER** neste ambiente, o agente NÃO
 > commita nem pusha por padrão: conclui a entrega bumpando `version.md` + entrada de

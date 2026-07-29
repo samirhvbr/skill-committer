@@ -171,6 +171,9 @@ ADR. Decisão nova entra aqui, com data e status, no mesmo commit da mudança.
 **Resolvidas em 29/07:** **P-01** — estado local em `$XDG_STATE_HOME/committer/`
 (`~/.local/state/committer/`), lock por repo com stale de 30 min · **P-05** —
 piloto = **skill-COMMITTER + SHVIA-WEB** (decisão do Samir); critérios de aprovação
-no escopo F4 · **P-04** — teto diário **global de 24** invocações do fallback,
+no escopo F4 — **ampliado no mesmo dia** (decisão do Samir) para os **24 repos** da
+casa com `version.md`, via sweep de marcadores + `~/x/GIT/run.sh`; o que a F4 ainda
+deve é o **bloco PS** nos `CLAUDE.md`/`AGENTS.md`, que é o que muda o hábito dos
+agentes · **P-04** — teto diário **global de 24** invocações do fallback,
 `COMMITTER_FALLBACK_DAILY_CAP` ajusta, `0` = kill-switch; contador no `state.json`,
 estourou = indisponível (o repo espera, nunca degrada para mensagem inventada).

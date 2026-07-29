@@ -30,7 +30,7 @@ principais o compromisso de commitar. Em ciclo (hook `Stop` + cron 30 min), lê 
 `X.Y.Z - descrição` a partir do `version.md` (determinístico; Sonnet só como
 fallback), commita e pusha a branch atual.
 
-Irmão do **AUDITOR** (`~/x/skill-AUDITOR`): mesmo padrão de documentação, mesma política
+Irmão do **AUDITOR** (`~/x/SKILLS/skill-AUDITOR`): mesmo padrão de documentação, mesma política
 de scheduler, padrões de segredo vendorizados do `redact.py` de lá.
 
 ---
@@ -40,11 +40,17 @@ de scheduler, padrões de segredo vendorizados do `redact.py` de lá.
 O que **existe e roda**: `skill/committer/committer_cycle.py` (pipeline completo,
 `--dry-run`), `secret_scan.py` (vendorizado do skill-AUDITOR), `fallback.py`
 (F3: modos `subscription`/`api-key`/`shvia`, validador mecânico, teto diário) e
-**43 testes** verificados por mutação (scan E validador). Piloto: este repo +
-SHVIA-WEB, marcadores instalados; cron no `SPEC.md` §3.
+**43 testes** verificados por mutação (scan E validador).
 
-O que **não existe**: hook `Stop` (F2 restante), sweep do PS nos repos da casa
-(F4), agrupamento por assunto (v2).
+**Participantes (29/07, sweep de marcadores):** 24 repos da casa — todos os nossos
+com `version.md`, exceto forks de terceiro e o balde `000/`. O cron não lista mais
+caminho nenhum: chama `~/x/GIT/run.sh`, que descobre quem tem `.committer.yml`
+(`SPEC.md` §3). Repos sem `version.md` ficaram de fora **de propósito** — sem ele
+não há formato da casa, e o ciclo pararia em "fallback necessário" toda vez.
+
+O que **não existe**: hook `Stop` (F2 restante), **bloco PS** nos `CLAUDE.md`/
+`AGENTS.md` dos participantes (metade restante da F4 — é ele que faz os agentes
+pararem de commitar; até lá vale o fluxo antigo), agrupamento por assunto (v2).
 
 ```bash
 python3 -m unittest discover -s tests -v          # 43 testes, sem modelo real
@@ -131,5 +137,5 @@ marcador.
 - Escopo e fases: [.continue/escopo-projeto.md](.continue/escopo-projeto.md)
 - Estado atual: [.continue/estado-atual.md](.continue/estado-atual.md)
 - Perfil do agente: [.claude/README.md](.claude/README.md)
-- Irmão: `~/x/skill-AUDITOR` (padrões de segredo, política de scheduler)
+- Irmão: `~/x/SKILLS/skill-AUDITOR` (padrões de segredo, política de scheduler)
 - Remoto: `github.com/samirhvbr/skill-COMMITTER` (privado) · branch `master`

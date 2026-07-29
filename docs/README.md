@@ -31,7 +31,7 @@ prompt do produto em [`prompts/`](../prompts/).
 
 - **Entender o produto** → `../README.md`, depois `decisoes.md`.
 - **Vai implementar (F1)** → `../SPEC.md` + `../SECURITY.md`, e o `redact.py` do
-  irmão AUDITOR (`~/x/skill-AUDITOR/skill/auditor/lib/redact.py`) para vendorizar.
+  irmão AUDITOR (`~/x/SKILLS/skill-AUDITOR/skill/auditor/lib/redact.py`) para vendorizar.
 - **Vai mexer no prompt do fallback** → T-04 do `../SECURITY.md` primeiro.
 
 ## Convenções
