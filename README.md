@@ -48,8 +48,12 @@ Por repositório participante, a cada disparo:
 6. **Scan de segredo** no diff staged (padrões do `redact.py` do AUDITOR). Achou →
    **exclui o arquivo, commita o resto, reporta visível** (ADR-005).
 7. **Mensagem** — `version.md` staged com entrada nova → `X.Y.Z - título da entrada`
-   (determinístico). Senão → fallback Sonnet: uma linha honesta; se não conseguir
-   descrever, **aborta** — vago é proibido (ADR-002).
+   (determinístico, zero tokens). Senão → **fallback** (`fallback.py`): o modelo
+   recebe VERSION+STAT+DIFF sem tools e devolve uma linha honesta ou `ABORT`; a
+   saída só vira commit se passar no **validador mecânico** — versão esperada
+   obrigatória (anti-injeção), formato, tamanho, sem segredo ecoado (ADR-002).
+   Auth: assinatura local, API key dedicada ou gateway ShvIA (ADR-008); teto
+   diário de 24 invocações (P-04).
 8. **Commit** — com trailer identificável da skill.
 9. **Push da branch atual** — nunca force; falha de push não é fatal (retenta).
 10. **Relatório** — uma linha por repo tocado; estado local mínimo.

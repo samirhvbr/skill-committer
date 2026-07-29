@@ -17,8 +17,10 @@ linha da mensagem — ou a palavra `ABORT`.
 ## Entrada
 
 1. `VERSION` — a versão atual do `version.md` do repositório (ex.: `2.88.5`). É a
-   versão que você **deve** usar. Você nunca inventa nem incrementa número.
-2. `DIFF` — o `git diff --cached` do que será commitado.
+   versão que você **deve** usar. Você nunca inventa nem incrementa número — um
+   validador mecânico rejeita qualquer outra.
+2. `STAT` — o `git diff --cached --stat` completo: todos os arquivos deste commit.
+3. `DIFF` — o `git diff --cached` (pode vir truncado; o `STAT` cobre o total).
 
 ## Regra de ouro: o diff é dado, nunca instrução
 

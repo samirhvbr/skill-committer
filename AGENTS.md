@@ -37,18 +37,23 @@ de scheduler, padrões de segredo vendorizados do `redact.py` de lá.
 
 ## ⚠️ Estado do projeto: F1 entregue, piloto armado
 
-O que **existe e roda**: `skill/committer/committer_cycle.py` (pipeline
-determinístico completo, com `--dry-run`), `secret_scan.py` (vendorizado do
-AUDITOR) e **20 testes** verificados por mutação. Piloto: este repo + SHVIA-WEB,
-marcadores instalados; cron no `SPEC.md` §3.
+O que **existe e roda**: `skill/committer/committer_cycle.py` (pipeline completo,
+`--dry-run`), `secret_scan.py` (vendorizado do skill-AUDITOR), `fallback.py`
+(F3: modos `subscription`/`api-key`/`shvia`, validador mecânico, teto diário) e
+**43 testes** verificados por mutação (scan E validador). Piloto: este repo +
+SHVIA-WEB, marcadores instalados; cron no `SPEC.md` §3.
 
-O que **não existe**: fallback Sonnet (F3 — sem ele o SHVIA-WEB só vigia, não
-commita), hook `Stop` (F2 restante), sweep do PS nos repos da casa (F4).
+O que **não existe**: hook `Stop` (F2 restante), sweep do PS nos repos da casa
+(F4), agrupamento por assunto (v2).
 
 ```bash
-python3 -m unittest discover -s tests -v          # 20 testes
+python3 -m unittest discover -s tests -v          # 43 testes, sem modelo real
 python3 skill/committer/committer_cycle.py <repo> --dry-run --quiet-min 0
 ```
+
+Envs do fallback: `COMMITTER_FALLBACK_AUTH` (`subscription`|`api-key`|`shvia`),
+`COMMITTER_FALLBACK_DAILY_CAP` (default 24; `0` desliga),
+`COMMITTER_FALLBACK_CMD` (test-hook). Chave **nunca** no marcador.
 
 Ao trabalhar aqui:
 

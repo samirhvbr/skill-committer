@@ -49,12 +49,24 @@ credencial em URL, `VAR_SECRET=…`) rodando sobre `git diff --cached`. Encontro
    arquivos staged **e** o diff dele adiciona entrada nova no topo do changelog →
    mensagem = `X.Y.Z - <título da entrada>`. O próprio diff denuncia que o agente
    principal preparou o handoff.
-2. **Fallback (Sonnet):** senão → o subagente lê `git diff --cached` e escreve **uma
-   linha** honesta em português; versão = a atual do `version.md`, repetida
-   (sancionado — ADR-002). Prompt em
-   [prompts/committer-fallback.md](prompts/committer-fallback.md). Se não conseguir
-   descrever com especificidade, retorna `ABORT` e o repo fica para o próximo ciclo
-   com aviso — **mensagem vaga é proibida**.
+2. **Fallback (Sonnet):** senão → o subagente recebe `VERSION` (a atual do
+   `version.md`, repetida — sancionado, ADR-002), `STAT` completo e `DIFF`
+   (truncado em 60 KB se preciso) e escreve **uma linha** honesta em português.
+   Prompt em [prompts/committer-fallback.md](prompts/committer-fallback.md). Se não
+   conseguir descrever com especificidade, retorna `ABORT` e o repo fica para o
+   próximo ciclo com aviso — **mensagem vaga é proibida**.
+
+   Toda saída passa pelo **validador mecânico** (`fallback.py::validate_output`):
+   exatamente uma linha, `X.Y.Z - descrição` com a **versão esperada** (qualquer
+   outra é rejeitada — é a defesa anti-injeção que não depende do modelo), descrição
+   ≥10 chars, linha ≤140, sem Conventional Commits, sem segredo ecoado
+   (`scan_text`). Rejeitado/`ABORT`/indisponível → stage desfeito, árvore intocada,
+   nunca degrada para mensagem inventada.
+
+   Precondições: `fallback:` ≠ `off` no marcador **e** o repo tem `version.md`
+   legível (sem ele não há formato da casa — nem se invoca o modelo). O commit de
+   fallback ganha trailer `(fallback <modelo>)` +
+   `Co-Authored-By: Claude Sonnet 5`.
 
 O COMMITTER **nunca bumpa versão**. Quando o diff claramente merecia bump (mudança de
 comportamento sem entrada de changelog), anota a pendência no relatório.
@@ -144,13 +156,26 @@ dois ciclos no mesmo repo ao mesmo tempo.
 ## 4. Modelo
 
 - Caminho determinístico: **nenhum modelo**.
-- Fallback: `sonnet` (subagente/headless com `model: sonnet`), entrada = diff staged,
-  saída = uma linha ou `ABORT`. Sem tools. ⛔ Teto de invocações por dia na F3.
-- **Auth do fallback (ADR-008):** `subscription` (default, login local) · `api-key`
-  (`ANTHROPIC_API_KEY` dedicada no ambiente do cron) · `shvia` (`ANTHROPIC_BASE_URL`
-  → gateway ShvIA + chave `shvia_usr_…`, auditoria/custo no painel; depende da prova
-  de fio do inbound 2.42.0). **Chave nunca no `.committer.yml`** — o marcador é
-  versionado no repo alvo; credencial vem do ambiente do serviço.
+- Fallback: `sonnet` (aliases `sonnet`/`haiku`/`opus` ou id `claude-…` completo),
+  entrada = `VERSION`+`STAT`+`DIFF`, saída = uma linha ou `ABORT`. **Sem tools, sem
+  MCP** — no modo `subscription`, garantido por `--tools "" --strict-mcp-config` e
+  cwd sandbox vazio (o contexto do repo alvo não carrega); nos modos HTTP, por
+  construção.
+- **Auth do fallback (ADR-008)** — env `COMMITTER_FALLBACK_AUTH`:
+  - `subscription` (default) — CLI `claude -p` com o login local. Validado ao vivo
+    em 29/07.
+  - `api-key` — HTTP direto (stdlib) com `ANTHROPIC_API_KEY` do ambiente.
+  - `shvia` — idem, com `ANTHROPIC_BASE_URL` → gateway ShvIA + chave `shvia_usr_…`
+    (auditoria/custo no painel; depende da prova de fio do inbound 2.42.0).
+  - **Chave nunca no `.committer.yml`** — o marcador é versionado no repo alvo;
+    credencial vem do ambiente do serviço.
+- **Teto diário (P-04, fechada):** default **24** invocações/dia, global; env
+  `COMMITTER_FALLBACK_DAILY_CAP` ajusta (`0` = kill-switch). Contador no
+  `state.json`; estourou = fallback indisponível, o repo espera.
+- **Test-hook/extensão:** env `COMMITTER_FALLBACK_CMD` = comando que lê o payload
+  JSON no stdin e imprime a linha — usado pela suíte (fakes, inclusive um que
+  obedece injeção) e serve para plugar gerador local. Passa pelo **mesmo**
+  validador.
 
 ---
 

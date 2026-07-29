@@ -35,20 +35,21 @@ necessário, reportado com a versão detectada, **stage desfeito e árvore intoc
 **Pronto quando:** turno encerrado num repo piloto → commit aparece sem intervenção;
 cron pega árvore suja de sessão morta.
 
-## F3 — Fallback Sonnet
+## F3 — Fallback Sonnet ✅ (0.3.0)
 
-**Objetivo:** o caso sem changelog deixa de ficar parado — no SHVIA-WEB
-(`version.md` só-número) é o caso **dominante**.
+Entregue em 29/07: `skill/committer/fallback.py` + integração no ciclo.
 
-- Invocação headless com `model: sonnet`, sem tools, prompt de
-  [`prompts/committer-fallback.md`](../prompts/committer-fallback.md).
-- **Auth configurável (ADR-008):** `subscription` | `api-key` | `shvia` — chave
-  sempre no ambiente do serviço, nunca no marcador.
-- Validador mecânico da saída (formato `X.Y.Z - …` ou `ABORT`; uma linha).
-- Teto diário de invocações (P-04) + fixture com injeção plantada no diff (T-04).
+- ✅ Modo `subscription` via `claude -p --tools "" --strict-mcp-config` em sandbox
+  (**validado ao vivo** — o Sonnet real gerou mensagem válida que passou no
+  validador e virou commit num fixture); modos `api-key`/`shvia` por HTTP stdlib.
+- ✅ Validador mecânico: versão esperada obrigatória (anti-injeção que não depende
+  do modelo), uma linha, formato, tamanho, sem Conventional Commits, sem segredo.
+- ✅ Teto diário (P-04): 24/dia, `COMMITTER_FALLBACK_DAILY_CAP`, `0` = kill-switch.
+- ✅ Fixture de injeção: fake que **obedece** a injeção morre no validador.
+- ✅ 43 testes; mutação no validador de versão derruba 2.
 
-**Pronto quando:** diff sem changelog vira mensagem específica ou `ABORT` reportado;
-saída fora do formato é rejeitada; injeção plantada não dirige a mensagem.
+**Pronto quando — atingido:** diff sem changelog vira mensagem específica ou
+`ABORT`/rejeição reportados; injeção plantada não dirige a mensagem.
 
 ## F4 — Piloto e rollout ◐ (piloto armado)
 

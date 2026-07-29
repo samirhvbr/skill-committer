@@ -68,7 +68,12 @@ class CycleCase(unittest.TestCase):
         self.age("app.py", "version.md")
 
     def run_cycle(self, *flags: str, repo: Path | None = None) -> subprocess.CompletedProcess:
-        env = dict(os.environ, XDG_STATE_HOME=str(self.state_home))
+        # COMMITTER_FALLBACK_CMD=false: guarda-corpo — NENHUM teste desta suite
+        # pode invocar modelo real (custo, rede, flakiness). O fallback "quebra
+        # rapido" e o ciclo reporta indisponibilidade. Integracao do fallback com
+        # fakes: tests/test_fallback.py.
+        env = dict(os.environ, XDG_STATE_HOME=str(self.state_home),
+                   COMMITTER_FALLBACK_CMD="false")
         return subprocess.run(
             [sys.executable, str(SCRIPT), str(repo or self.repo), *flags],
             capture_output=True, text=True, env=env,
@@ -173,27 +178,43 @@ class CycleCase(unittest.TestCase):
         self.run_cycle("--quiet-min", "0")
         self.assertEqual(self.head_subject(), "1.3.0 - Entrega de cima")
 
-    def test_bump_sem_titulo_nao_commita_e_desfaz_stage(self) -> None:
-        """Formato SHVIA-WEB: version.md so com numero → caso do fallback (F3)."""
-        self.marker()
+    def test_bump_sem_titulo_com_fallback_off_nao_commita(self) -> None:
+        """Formato SHVIA-WEB: version.md so com numero → caso do fallback. Com
+        fallback: off (modo vigia), NADA e commitado e o stage e desfeito."""
+        self.marker("fallback: off\n")
         (self.repo / "version.md").write_text("2.88.6\n")
         (self.repo / "app.py").write_text("y = 2\n")
         self.age("version.md", "app.py")
         before = self.commit_count()
         got = self.run_cycle("--quiet-min", "0")
-        self.assertIn("fallback necessario", got.stdout)
+        self.assertIn("fallback: off", got.stdout)
         self.assertIn("2.88.6", got.stdout, "deveria reportar a versao detectada")
         self.assertEqual(self.commit_count(), before)
         staged = sh(self.repo, "git", "diff", "--cached", "--name-only").stdout
         self.assertEqual(staged.strip(), "", "stage deveria ter sido desfeito")
 
-    def test_sujeira_sem_version_md_nao_commita(self) -> None:
+    def test_fallback_indisponivel_nao_commita(self) -> None:
+        """Fallback ligado mas quebrado (CMD falha): indisponibilidade NUNCA vira
+        commit — o repo espera o proximo ciclo."""
         self.marker()
+        (self.repo / "version.md").write_text("0.0.1\n")
+        sh(self.repo, "git", "add", "version.md")
+        sh(self.repo, "git", "commit", "-q", "-m", "0.0.1 - version.md do fixture")
         (self.repo / "app.py").write_text("z = 3\n")
         self.age("app.py")
         before = self.commit_count()
         got = self.run_cycle("--quiet-min", "0")
-        self.assertIn("fallback necessario", got.stdout)
+        self.assertIn("fallback nao produziu mensagem", got.stdout)
+        self.assertEqual(self.commit_count(), before)
+
+    def test_repo_sem_version_md_nao_commita(self) -> None:
+        """Sem version.md nao ha formato da casa — nem o fallback e invocado."""
+        self.marker()
+        (self.repo / "app.py").write_text("w = 4\n")
+        self.age("app.py")
+        before = self.commit_count()
+        got = self.run_cycle("--quiet-min", "0")
+        self.assertIn("nao tem version.md", got.stdout)
         self.assertEqual(self.commit_count(), before)
 
     # ── ADR-005 / T-01: segredo → exclui o arquivo, commita o resto ──────

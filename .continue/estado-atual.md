@@ -20,38 +20,42 @@
     do Samir. Este próprio commit `0.2.0` foi feito **pelo committer** (dogfood: o
     título veio da entrada de changelog; trailer `Committed-By` no corpo).
 
+- **2026-07-29 — `0.3.0` (F3):** fallback entregue — `fallback.py` com três modos
+  de auth (ADR-008), validador mecânico anti-injeção (versão esperada
+  obrigatória), teto diário (P-04 fechada: 24/dia, kill-switch), test-hook
+  `COMMITTER_FALLBACK_CMD`. Modo `subscription` **validado ao vivo** (Sonnet real
+  gerou mensagem válida num fixture). 43 testes; mutação no validador derruba 2.
+
 ---
 
 ## Onde o projeto está
 
-**F1 ✅ · F2 ◐ (cron sim, Stop não) · F3 ⛔ · F4 ◐ (armado, sem medição).**
+**F1 ✅ · F2 ◐ (cron sim, Stop não) · F3 ✅ · F4 ◐ (armado, sem medição).**
 
-Realidade do piloto enquanto F3 não existe:
+Piloto com F3:
 
-- **skill-COMMITTER**: entregas daqui seguem o formato com changelog → o committer
-  commita sozinho (determinístico).
-- **SHVIA-WEB**: `version.md` de lá é **só o número** → não há título para extrair →
-  todo ciclo com sujeira reporta "fallback necessário" e **não commita nada** (stage
-  desfeito). O committer ainda assim vigia, trava segredo e loga. Os commits de lá
-  continuam manuais até a F3 — ou até o `version.md` de lá ganhar changelog, o que é
-  decisão do Samir, não nossa.
+- **skill-COMMITTER**: entregas com changelog → determinístico (zero tokens);
+  fallback ativo como rede.
+- **SHVIA-WEB**: o fallback destrava o caso de lá (`version.md` só-número), MAS o
+  marcador está com **`fallback: off` até o Samir decidir os zips soltos** — com
+  fallback ligado, o primeiro ciclo commitaria os 4 zips (`SHVIA-md*.zip`,
+  `shvia.zip`) que o `.gitignore` de lá não cobre. O committer não julga lixo por
+  desenho; a decisão é humana.
 
 ## Próximo passo
 
-**F3 — fallback Sonnet.** É o que destrava o SHVIA-WEB (caso dominante lá) e onde o
-ADR-008 (auth por API key / gateway ShvIA) se implementa. Depois: hook `Stop` (F2
-restante).
+**F2 restante — hook `Stop`** (P-03): disparo pós-turno. Depois F4: medir o piloto
+e fazer o sweep do PS + marcadores nos repos da casa.
 
 ## Precisa do Samir
 
-- **Instalar o cron** (linha no `SPEC.md` §3; rodar 1× manual antes p/ criar o
-  diretório de estado).
-- F3: escolher o modo de auth do fallback no piloto (`subscription` é o default;
-  `shvia` depende da prova de fio do inbound 2.42.0 do SHVIA-WEB).
-- Observação de campo: há **3 zips soltos** na árvore do SHVIA-WEB
-  (`SHVIA-md*.zip`) que o `.gitignore` de lá não cobre — hoje o committer não os
-  commita (sem changelog → sem commit), mas vale decidir: ignorar (`*.zip`) ou
-  remover.
+- **Instalar o cron** (linha no `SPEC.md` §3; rodar 1× manual antes — já feito
+  nesta máquina, o diretório de estado existe).
+- **Zips do SHVIA-WEB**: ignorar (`*.zip` no `.gitignore`), remover, ou commitar —
+  destrava o `fallback: on` lá.
+- Modo de auth do fallback no cron: `subscription` (default) funciona já;
+  `api-key`/`shvia` = exportar envs na crontab (`shvia` depende da prova de fio do
+  inbound 2.42.0).
 
 ## Contexto de ambiente
 

@@ -33,6 +33,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from secret_scan import is_sensitive_path, scan_text  # noqa: E402
+import fallback as fb  # noqa: E402
 
 MARKER = ".committer.yml"
 LOCK_STALE_S = 30 * 60
@@ -69,6 +70,17 @@ CHANGELOG_ENTRY = re.compile(
 )
 # Bump sem titulo: "**Versão atual:** `X.Y.Z`" ou linha so com o numero (SHVIA-WEB).
 VERSION_ONLY = re.compile(r"^\+\s*(?:\*{0,2}Vers[aã]o atual:?\*{0,2}\s*)?`?(\d+\.\d+\.\d+)`?\s*$")
+
+
+def repo_current_version(repo: Path) -> str:
+    """Primeiro semver do version.md do repo (working tree — que ja reflete o que
+    esta staged). E a versao que o fallback DEVE usar; ele nunca inventa."""
+    try:
+        text = (repo / "version.md").read_text(encoding="utf-8")
+    except OSError:
+        return ""
+    m = re.search(r"\d+\.\d+\.\d+", text)
+    return m.group(0) if m else ""
 
 
 def state_dir() -> Path:
@@ -378,16 +390,42 @@ def cycle(repo: Path, args: argparse.Namespace, state: dict) -> Report:
             return rep
 
         message, version_seen = extract_message(repo, cfg_extra)
+        used_fallback = False
         if message is None:
             # ADR-002: sem entrada de changelog com titulo, o caso e do fallback
-            # Sonnet (F3, nao implementado). Este script NUNCA inventa mensagem.
+            # (F3). Que NUNCA inventa: versao vem do version.md do repo, e sem
+            # version.md nao ha formato da casa — o repo espera um humano.
             detail = (f"version.md bumpado para {version_seen} mas sem entrada de "
                       "changelog com titulo" if version_seen
                       else "version.md sem mudanca")
-            rep.add(f"fallback necessario ({detail}) — F3 pendente; stage desfeito, "
-                    "arvore intocada")
-            git(repo, "reset", "-q")
-            return rep
+            if cfg["fallback"] in (None, "off"):
+                rep.add(f"fallback necessario ({detail}) mas fallback: off no "
+                        "marcador — stage desfeito, arvore intocada")
+                git(repo, "reset", "-q")
+                return rep
+            version = version_seen or repo_current_version(repo)
+            if not version:
+                rep.add(f"fallback necessario ({detail}) mas o repo nao tem "
+                        "version.md legivel — sem formato da casa, sem commit")
+                git(repo, "reset", "-q")
+                return rep
+            stat = git(repo, "diff", "--cached", "--stat", cfg=cfg_extra).stdout
+            diff = git(repo, "diff", "--cached", cfg=cfg_extra).stdout
+            if args.dry_run:
+                rep.add(f"dry-run: invocaria o fallback ({detail}; "
+                        f"versao {version}, modelo {cfg['fallback']})")
+                git(repo, "reset", "-q")
+                return rep
+            message, why = fb.generate_message(
+                version, stat, diff, str(cfg["fallback"]), state,
+                state_dir() / "sandbox")
+            if message is None:
+                rep.add(f"fallback nao produziu mensagem ({why}) — {detail}; "
+                        "stage desfeito, arvore intocada")
+                git(repo, "reset", "-q")
+                return rep
+            used_fallback = True
+            rep.add(f"mensagem via fallback {cfg['fallback']}: {message}")
 
         n_files = len(staged_files(repo, cfg_extra))
         if args.dry_run:
@@ -395,8 +433,11 @@ def cycle(repo: Path, args: argparse.Namespace, state: dict) -> Report:
             git(repo, "reset", "-q")
             return rep
 
-        r = git(repo, "commit", "-m", message,
-                "-m", f"Committed-By: committer/{skill_version()}", cfg=cfg_extra)
+        trailer = f"Committed-By: committer/{skill_version()}"
+        if used_fallback:
+            trailer += (" (fallback " + str(cfg["fallback"]) + ")\n"
+                        "Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>")
+        r = git(repo, "commit", "-m", message, "-m", trailer, cfg=cfg_extra)
         if r.returncode != 0:
             rep.add(f"commit FALHOU: {(r.stderr or r.stdout).strip().splitlines()[-1]}")
             git(repo, "reset", "-q")

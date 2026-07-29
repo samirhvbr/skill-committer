@@ -1,6 +1,6 @@
 # Versão — skill-COMMITTER
 
-**Versão atual:** `0.2.0`
+**Versão atual:** `0.3.0`
 
 > Este arquivo é a **fonte da verdade** da versão do projeto. Qualquer lugar que
 > precise exibir ou reportar a versão extrai o **primeiro número semver (`X.Y.Z`)**
@@ -66,6 +66,61 @@ COMMITTER usar a versão atual no fallback sem inventar número (ADR-002).
 ## 3. Changelog
 
 > Ordem decrescente (mais recente no topo).
+
+### `0.3.0` — 2026-07-29 — F3: fallback com validador anti-injeção, três modos de auth e teto diário
+
+Bump de **`Y`**: fase F3 concluída. O caso sem changelog (dominante no SHVIA-WEB,
+cujo `version.md` é só-número) deixa de ficar parado.
+
+**Código**
+- `skill/committer/fallback.py` — orquestra o fallback: teto diário → prompt do
+  produto (corpo de `prompts/committer-fallback.md`, sem o header humano) →
+  invocação por modo → **validador mecânico** → mensagem ou motivo.
+  - **Modos de auth (ADR-008):** `subscription` (default) = `claude -p --model
+    sonnet --tools "" --strict-mcp-config` em **cwd sandbox vazio** — sem tools,
+    sem MCP, sem o contexto do repo alvo; `api-key` e `shvia` = HTTP direto pela
+    stdlib (`urllib`) para `$ANTHROPIC_BASE_URL/v1/messages` — sem tools por
+    construção. Chave só do ambiente do serviço, nunca do marcador.
+  - **Validador**: exatamente uma linha `X.Y.Z - descrição` com a **versão
+    esperada** — qualquer outra versão é rejeitada, que é a defesa anti-injeção
+    que não depende do modelo obedecer o prompt; descrição ≥10 chars, linha ≤140,
+    sem Conventional Commits, sem segredo ecoado (`scan_text` na mensagem).
+  - **Teto diário (P-04, fechada):** 24/dia global, `COMMITTER_FALLBACK_DAILY_CAP`
+    ajusta, `0` = kill-switch; contador no `state.json` com poda de dias antigos.
+    Estourou/indisponível/ABORT/rejeitado → stage desfeito, árvore intocada.
+  - Test-hook `COMMITTER_FALLBACK_CMD` (payload JSON no stdin → linha no stdout),
+    usado pela suíte e utilizável para gerador local; passa pelo mesmo validador.
+- `committer_cycle.py` — integração: precondições (`fallback:` ≠ `off`,
+  `version.md` legível — sem ele nem invoca), `--dry-run` anuncia sem invocar,
+  trailer de fallback com `(fallback <modelo>)` + `Co-Authored-By: Claude Sonnet 5`.
+- `prompts/committer-fallback.md` — entrada ganha `STAT` completo e a nota do
+  validador; diff truncado em 60 KB com marcador.
+
+**Validação ao vivo (modo subscription)**
+- O Sonnet real gerou, num fixture sem changelog, `"2.88.6 - Cria app.py com
+  atribuição da variável y"` — formato, versão e idioma certos, aprovada pelo
+  validador e commitada. (Descoberto por acidente de suíte antes do guarda-corpo
+  `COMMITTER_FALLBACK_CMD=false` entrar nos testes do ciclo — os testes nunca mais
+  chamam modelo real.)
+
+**Testes — 43, sem modelo real**
+- `tests/test_fallback.py`: validador (aceita boa; rejeita versão inventada,
+  multilinha, vazio, Conventional, curta, gigante, segredo ecoado), truncamento,
+  header do prompt não vai ao modelo, teto com poda e kill-switch, e integração
+  com fakes — incluindo **um que obedece a injeção plantada no diff** (pior caso)
+  e morre na checagem de versão.
+- Mutação: neutralizar a checagem de versão derruba 2 testes; scan da F1 segue
+  derrubando 3.
+
+**Limite declarado (SECURITY T-04)**
+- A garantia mecânica cobre versão, formato, tamanho e segredo ecoado. **Não cobre
+  semântica** — descrição enganosa com a versão certa passa; essa defesa é do
+  prompt. O diff chega ao fallback já depois do scan de segredo do estágio 1.6.
+
+_Gatilhos:_ fase concluída (Y), comportamento novo de script, política de
+segurança nova em código (validador + teto), prompt do produto alterado.
+
+---
 
 ### `0.2.0` — 2026-07-29 — F1: núcleo determinístico do ciclo, scan de segredo e piloto armado
 

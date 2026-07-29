@@ -167,9 +167,10 @@ ADR. Decisão nova entra aqui, com data e status, no mesmo commit da mudança.
 |---|---|---|---|
 | **P-02** | Esquema JSON formal do `.committer.yml` + validador | Robustez | F1 |
 | **P-03** | Mecânica exata do hook `Stop` (o hook dispara o script ou agenda?) — a metade do cron está decidida: **crontab do Linux**, porque as rotinas agendadas do Claude Code rodam na nuvem e não enxergam `~/x` | Gatilhos | F2 |
-| **P-04** | Teto de invocações do fallback por dia | Custo | F3 |
 
 **Resolvidas em 29/07:** **P-01** — estado local em `$XDG_STATE_HOME/committer/`
 (`~/.local/state/committer/`), lock por repo com stale de 30 min · **P-05** —
 piloto = **skill-COMMITTER + SHVIA-WEB** (decisão do Samir); critérios de aprovação
-no escopo F4.
+no escopo F4 · **P-04** — teto diário **global de 24** invocações do fallback,
+`COMMITTER_FALLBACK_DAILY_CAP` ajusta, `0` = kill-switch; contador no `state.json`,
+estourou = indisponível (o repo espera, nunca degrada para mensagem inventada).
