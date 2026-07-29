@@ -1,0 +1,5 @@
+# Opt-in do COMMITTER neste repositório (ADR-004) — piloto desde 29/07/2026.
+# A presença deste arquivo é o opt-in; as chaves só RESTRINGEM (SPEC.md §2).
+enabled: true
+push: true
+branch_only: master

@@ -1,0 +1,454 @@
+#!/usr/bin/env python3
+"""committer_cycle — um ciclo do COMMITTER sobre cada repositorio candidato.
+
+Pipeline normativo no SPEC.md §1 (a ordem dos estagios aqui segue a de la).
+Decisoes em docs/decisoes.md (ADR-001 a ADR-008). Resumo do contrato:
+
+- So repos com o marcador `.committer.yml` participam (ADR-004).
+- Mensagem vem do changelog do `version.md` staged (deterministico, zero tokens);
+  sem entrada com titulo → o caso e do fallback Sonnet (F3, ainda nao implementado):
+  este script REPORTA e desfaz o stage, nunca inventa mensagem (ADR-002).
+- Segredo no staged → exclui o(s) arquivo(s), commita o resto, reporta (ADR-005).
+- Push da branch atual, nunca force; falha nao e fatal, 3 seguidas param (ADR-006).
+- Nunca bumpa versao, nunca edita conteudo, nunca resolve conflito.
+
+Uso:
+    committer_cycle.py REPO [REPO...] [--dry-run] [--quiet-min N]
+
+Exit code sempre 0 (e um ciclo de cron; erro de um repo nao derruba os outros) —
+exceto uso invalido da linha de comando.
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from secret_scan import is_sensitive_path, scan_text  # noqa: E402
+
+MARKER = ".committer.yml"
+LOCK_STALE_S = 30 * 60
+FF_FAILS_LIMIT = 3
+
+# Chaves aceitas no marcador e seus defaults (SPEC §2). Chave desconhecida e ERRO
+# (fail-closed): typo em "enabled" nao pode virar silencio.
+MARKER_DEFAULTS: dict[str, object] = {
+    "enabled": True,
+    "push": True,
+    "quiet_window_min": 5,
+    "branch_only": None,
+    "credential_bridge": "auto",   # auto = bridge gh so quando o remote e http(s)
+    "lfs_bypass": False,
+    "fallback": "sonnet",
+}
+
+# -c aplicados quando lfs_bypass=true: neutralizam os filtros LFS em maquinas sem
+# git-lfs (caso matomo). Sem efeito em repo sem .gitattributes de LFS.
+LFS_BYPASS_CFG = [
+    "-c", "filter.lfs.clean=cat",
+    "-c", "filter.lfs.smudge=cat",
+    "-c", "filter.lfs.process=",
+    "-c", "filter.lfs.required=false",
+]
+
+GH_BRIDGE_CFG = ["-c", "credential.helper=!gh auth git-credential"]
+
+# Entrada de changelog com titulo, no formato da casa:
+#   ### `0.2.0` — 2026-07-29 — Titulo da entrega
+# Aceita 1-4 #, hifen/en/em-dash, data opcional, crase opcional.
+CHANGELOG_ENTRY = re.compile(
+    r"^\+\s*#{1,4}\s*`?(\d+\.\d+\.\d+)`?\s*[—–-]+\s*(?:\d{4}-\d{2}-\d{2}\s*[—–-]+\s*)?(\S.*?)\s*$"
+)
+# Bump sem titulo: "**Versão atual:** `X.Y.Z`" ou linha so com o numero (SHVIA-WEB).
+VERSION_ONLY = re.compile(r"^\+\s*(?:\*{0,2}Vers[aã]o atual:?\*{0,2}\s*)?`?(\d+\.\d+\.\d+)`?\s*$")
+
+
+def state_dir() -> Path:
+    base = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local" / "state"))
+    return base / "committer"
+
+
+def skill_version() -> str:
+    try:
+        text = (Path(__file__).resolve().parents[2] / "version.md").read_text(encoding="utf-8")
+        m = re.search(r"\d+\.\d+\.\d+", text)
+        return m.group(0) if m else "0.0.0"
+    except OSError:
+        return "0.0.0"
+
+
+def slug(repo: Path) -> str:
+    real = str(repo.resolve())
+    return f"{repo.name}-{hashlib.sha1(real.encode()).hexdigest()[:8]}"
+
+
+def git(repo: Path, *args: str, cfg: list[str] | None = None,
+        check: bool = False) -> subprocess.CompletedProcess:
+    cmd = ["git", *(cfg or []), "-C", str(repo), *args]
+    return subprocess.run(cmd, capture_output=True, text=True, check=check)
+
+
+class Report:
+    """Acumula as linhas do relatorio — uma por evento, prefixadas pelo repo."""
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+        self.lines: list[str] = []
+
+    def add(self, msg: str) -> None:
+        self.lines.append(f"[{self.name}] {msg}")
+
+
+def parse_marker(path: Path) -> dict:
+    """Parser do subset YAML do marcador: linhas `chave: valor` planas, comentarios
+    com # e vazias. Fail-closed: chave desconhecida ou valor de tipo errado e erro
+    (SPEC §2 — o marcador so restringe; um typo nao pode afrouxar nada)."""
+    cfg = dict(MARKER_DEFAULTS)
+    for n, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        line = raw.split("#", 1)[0].strip()
+        if not line:
+            continue
+        if ":" not in line:
+            raise ValueError(f"{MARKER}:{n}: linha sem 'chave: valor': {raw!r}")
+        key, _, value = line.partition(":")
+        key, value = key.strip(), value.strip().strip("\"'")
+        if key not in MARKER_DEFAULTS:
+            raise ValueError(f"{MARKER}:{n}: chave desconhecida {key!r}")
+        default = MARKER_DEFAULTS[key]
+        if isinstance(default, bool):
+            if value.lower() not in ("true", "false"):
+                raise ValueError(f"{MARKER}:{n}: {key} espera true/false, veio {value!r}")
+            cfg[key] = value.lower() == "true"
+        elif isinstance(default, int):
+            if not value.isdigit():
+                raise ValueError(f"{MARKER}:{n}: {key} espera inteiro, veio {value!r}")
+            cfg[key] = int(value)
+        else:  # str | None
+            cfg[key] = None if value.lower() in ("null", "~", "none", "") else value
+    return cfg
+
+
+def dirty_paths(repo: Path) -> list[str]:
+    """Caminhos sujos via `status --porcelain=v1 -z` (NUL-separado, aguenta espaco
+    e rename — rename consome dois campos)."""
+    out = git(repo, "status", "--porcelain=v1", "-z").stdout
+    paths: list[str] = []
+    tokens = out.split("\0")
+    i = 0
+    while i < len(tokens):
+        tok = tokens[i]
+        if not tok:
+            i += 1
+            continue
+        status, path = tok[:2], tok[3:]
+        paths.append(path)
+        if status[0] in ("R", "C"):
+            i += 1  # campo extra: caminho de origem do rename/copy
+            if i < len(tokens) and tokens[i]:
+                paths.append(tokens[i])
+        i += 1
+    return paths
+
+
+def quiet_violated(repo: Path, paths: list[str], window_min: int) -> bool:
+    """True se algum arquivo sujo foi modificado dentro da janela quieta — alguem
+    esta trabalhando AGORA. Arquivo deletado nao tem mtime e nao conta."""
+    if window_min <= 0:
+        return False
+    threshold = time.time() - window_min * 60
+    for p in paths:
+        try:
+            if (repo / p).stat().st_mtime > threshold:
+                return True
+        except OSError:
+            continue
+    return False
+
+
+def sanity_block(repo: Path, cfg: dict, rep: Report) -> str | None:
+    """Estagio 1.2 do SPEC: retorna o motivo do bloqueio, ou None para seguir."""
+    if not cfg["enabled"]:
+        return "enabled: false no marcador (kill-switch local)"
+    gitdir = repo / ".git"
+    for marker, label in [
+        ("MERGE_HEAD", "merge em andamento"),
+        ("rebase-merge", "rebase em andamento"),
+        ("rebase-apply", "rebase/am em andamento"),
+        ("CHERRY_PICK_HEAD", "cherry-pick em andamento"),
+        ("BISECT_LOG", "bisect em andamento"),
+    ]:
+        if (gitdir / marker).exists():
+            return label
+    branch = git(repo, "symbolic-ref", "--short", "-q", "HEAD").stdout.strip()
+    if not branch:
+        return "detached HEAD"
+    if cfg["branch_only"] and branch != cfg["branch_only"]:
+        return f"branch atual ({branch}) fora de branch_only ({cfg['branch_only']})"
+    if git(repo, "diff", "--name-only", "--diff-filter=U").stdout.strip():
+        return "conflito nao resolvido no indice"
+    return None
+
+
+def staged_files(repo: Path, cfg_extra: list[str]) -> list[tuple[str, str]]:
+    """[(status, path)] do indice, NUL-separado."""
+    out = git(repo, "diff", "--cached", "--name-status", "-z", cfg=cfg_extra).stdout
+    tokens = [t for t in out.split("\0")]
+    files: list[tuple[str, str]] = []
+    i = 0
+    while i < len(tokens):
+        status = tokens[i]
+        if not status:
+            i += 1
+            continue
+        if status[0] in ("R", "C"):
+            # origem em i+1, destino em i+2 — o destino e o que esta staged
+            if i + 2 < len(tokens):
+                files.append((status[0], tokens[i + 2]))
+            i += 3
+        else:
+            if i + 1 < len(tokens):
+                files.append((status[0], tokens[i + 1]))
+            i += 2
+    return files
+
+
+def added_lines(repo: Path, path: str, cfg_extra: list[str]) -> str:
+    """Linhas adicionadas (staged) de um arquivo — so o que ESTE commit publicaria.
+    Segredo antigo ja commitado nao bloqueia arquivo para sempre."""
+    out = git(repo, "diff", "--cached", "-U0", "--", path, cfg=cfg_extra).stdout
+    return "\n".join(l[1:] for l in out.splitlines()
+                     if l.startswith("+") and not l.startswith("+++"))
+
+
+def is_binary_staged(repo: Path, path: str, cfg_extra: list[str]) -> bool:
+    out = git(repo, "diff", "--cached", "--numstat", "--", path, cfg=cfg_extra).stdout
+    return out.startswith("-\t-\t")
+
+
+def secret_sweep(repo: Path, cfg_extra: list[str], rep: Report) -> list[str]:
+    """Estagio 1.6: retorna os arquivos EXCLUIDOS do stage por suspeita de segredo.
+    ADR-005: exclui o arquivo inteiro, nunca edita conteudo."""
+    offenders: list[str] = []
+    for status, path in staged_files(repo, cfg_extra):
+        if status == "D":
+            continue  # delecao nao publica conteudo novo
+        reasons: list[str] = []
+        if is_sensitive_path(path):
+            reasons.append("caminho sensivel")
+        elif not is_binary_staged(repo, path, cfg_extra):
+            reasons.extend(scan_text(added_lines(repo, path, cfg_extra)))
+        if reasons:
+            offenders.append(path)
+            rep.add(f"SEGREDO SUSPEITO em {path} ({', '.join(reasons)}) — "
+                    "arquivo EXCLUIDO deste commit; trate e ele entra no proximo")
+    if offenders:
+        git(repo, "restore", "--staged", "--", *offenders, cfg=cfg_extra)
+    return offenders
+
+
+def extract_message(repo: Path, cfg_extra: list[str]) -> tuple[str | None, str | None]:
+    """Estagio 1.7 caminho deterministico. Retorna (mensagem, versao_detectada).
+
+    mensagem != None  → entrada de changelog com titulo no topo do diff staged do
+                        version.md: e a mensagem do commit.
+    mensagem == None  → sem entrada com titulo. versao_detectada indica se ao menos
+                        houve bump de numero (caso SHVIA-WEB) — de todo jeito o caso
+                        e do fallback (F3)."""
+    names = [p for _, p in staged_files(repo, cfg_extra)]
+    if "version.md" not in names:
+        return None, None
+    diff = git(repo, "diff", "--cached", "-U0", "--", "version.md", cfg=cfg_extra).stdout
+    version_only: str | None = None
+    for line in diff.splitlines():
+        m = CHANGELOG_ENTRY.match(line)
+        if m:
+            return f"{m.group(1)} - {m.group(2)}", m.group(1)
+        if version_only is None:
+            v = VERSION_ONLY.match(line)
+            if v:
+                version_only = v.group(1)
+    return None, version_only
+
+
+def push(repo: Path, branch: str, cfg: dict, cfg_extra: list[str],
+         st: dict, rep: Report, dry: bool) -> None:
+    """Estagio 1.9. Falha nao e fatal; 3 seguidas param de tentar (ADR-006)."""
+    if not cfg["push"]:
+        rep.add("push: off no marcador — commit fica local")
+        return
+    if int(st.get("push_fails", 0)) >= FF_FAILS_LIMIT:
+        rep.add(f"push SUSPENSO apos {FF_FAILS_LIMIT} falhas seguidas — requer humano "
+                "(resolva e zere apagando o estado ou pushe manualmente)")
+        return
+    url = git(repo, "remote", "get-url", "origin").stdout.strip()
+    if not url:
+        rep.add("sem remote origin — commit fica local")
+        return
+    extra = list(cfg_extra)
+    if cfg["credential_bridge"] == "gh" or (
+            cfg["credential_bridge"] == "auto" and url.startswith("http")):
+        extra = GH_BRIDGE_CFG + extra
+    if dry:
+        rep.add(f"dry-run: pusharia {branch} para {url}")
+        return
+    r = git(repo, "push", "origin", branch, cfg=extra)
+    if r.returncode == 0:
+        st["push_fails"] = 0
+        rep.add(f"push OK ({branch})")
+    else:
+        st["push_fails"] = int(st.get("push_fails", 0)) + 1
+        err = (r.stderr or "").strip().splitlines()
+        rep.add(f"push FALHOU ({st['push_fails']}/{FF_FAILS_LIMIT}) — commit local "
+                f"mantido; retenta no proximo ciclo. {err[-1] if err else ''}")
+
+
+def acquire_lock(name: str) -> Path | None:
+    locks = state_dir() / "locks"
+    locks.mkdir(parents=True, exist_ok=True)
+    lock = locks / f"{name}.lock"
+    try:
+        fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError:
+        try:
+            if time.time() - lock.stat().st_mtime > LOCK_STALE_S:
+                lock.unlink(missing_ok=True)  # stale de processo morto
+                return acquire_lock(name)
+        except OSError:
+            pass
+        return None
+    with os.fdopen(fd, "w") as f:
+        f.write(f"{os.getpid()} {int(time.time())}\n")
+    return lock
+
+
+def cycle(repo: Path, args: argparse.Namespace, state: dict) -> Report:
+    rep = Report(repo.name)
+    st = state.setdefault(slug(repo), {})
+
+    marker = repo / MARKER
+    if not marker.is_file():
+        return rep  # invisivel por construcao (ADR-004): nem linha de log
+
+    try:
+        cfg = parse_marker(marker)
+    except (ValueError, OSError) as exc:
+        rep.add(f"marcador invalido — nada feito (fail-closed): {exc}")
+        return rep
+
+    if args.quiet_min is not None:
+        cfg["quiet_window_min"] = args.quiet_min
+
+    blocked = sanity_block(repo, cfg, rep)
+    if blocked:
+        rep.add(f"no-op: {blocked}")
+        return rep
+
+    paths = dirty_paths(repo)
+    st["last_checked"] = int(time.time())
+    if not paths:
+        return rep  # arvore limpa: no-op silencioso (SPEC §1.3)
+
+    if quiet_violated(repo, paths, int(cfg["quiet_window_min"])):
+        rep.add(f"adiado: modificacao ha menos de {cfg['quiet_window_min']} min "
+                "(janela quieta — alguem trabalhando agora)")
+        return rep
+
+    lock = acquire_lock(slug(repo))
+    if lock is None:
+        return rep  # disparo concorrente desiste em silencio (ADR-003)
+
+    cfg_extra = LFS_BYPASS_CFG if cfg["lfs_bypass"] else []
+    try:
+        branch = git(repo, "symbolic-ref", "--short", "-q", "HEAD").stdout.strip()
+        git(repo, "add", "-A", cfg=cfg_extra)
+
+        blocked_files = secret_sweep(repo, cfg_extra, rep)
+
+        if not staged_files(repo, cfg_extra):
+            rep.add("nada a commitar" + (" (so havia arquivos bloqueados)" if blocked_files else ""))
+            git(repo, "reset", "-q")
+            return rep
+
+        message, version_seen = extract_message(repo, cfg_extra)
+        if message is None:
+            # ADR-002: sem entrada de changelog com titulo, o caso e do fallback
+            # Sonnet (F3, nao implementado). Este script NUNCA inventa mensagem.
+            detail = (f"version.md bumpado para {version_seen} mas sem entrada de "
+                      "changelog com titulo" if version_seen
+                      else "version.md sem mudanca")
+            rep.add(f"fallback necessario ({detail}) — F3 pendente; stage desfeito, "
+                    "arvore intocada")
+            git(repo, "reset", "-q")
+            return rep
+
+        n_files = len(staged_files(repo, cfg_extra))
+        if args.dry_run:
+            rep.add(f"dry-run: commitaria {n_files} arquivo(s) com: {message!r}")
+            git(repo, "reset", "-q")
+            return rep
+
+        r = git(repo, "commit", "-m", message,
+                "-m", f"Committed-By: committer/{skill_version()}", cfg=cfg_extra)
+        if r.returncode != 0:
+            rep.add(f"commit FALHOU: {(r.stderr or r.stdout).strip().splitlines()[-1]}")
+            git(repo, "reset", "-q")
+            return rep
+        sha = git(repo, "rev-parse", "--short", "HEAD").stdout.strip()
+        st.update(last_commit=sha, last_message=message)
+        rep.add(f"commit {sha} ({n_files} arquivo(s)): {message}")
+
+        push(repo, branch, cfg, cfg_extra, st, rep, args.dry_run)
+    finally:
+        lock.unlink(missing_ok=True)
+    return rep
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description="Um ciclo do COMMITTER (SPEC.md §1).")
+    ap.add_argument("repos", nargs="+", type=Path,
+                    help="repositorios candidatos (so os com .committer.yml participam)")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="tudo menos commit/push; imprime o que faria e desfaz o stage")
+    ap.add_argument("--quiet-min", type=int, default=None, metavar="N",
+                    help="override da janela quieta (uso manual/teste; 0 desliga)")
+    args = ap.parse_args()
+
+    sdir = state_dir()
+    sdir.mkdir(parents=True, exist_ok=True)
+    state_file = sdir / "state.json"
+    try:
+        state = json.loads(state_file.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        state = {}
+
+    stamp = time.strftime("%Y-%m-%d %H:%M:%S")
+    for repo in args.repos:
+        if not (repo / ".git").exists():
+            print(f"[{repo.name}] ignorado: nao e um repositorio git")
+            continue
+        try:
+            rep = cycle(repo.resolve(), args, state)
+        except Exception as exc:  # noqa: BLE001 — um repo nunca derruba os outros
+            print(f"[{repo.name}] ERRO inesperado: {type(exc).__name__}: {exc}")
+            continue
+        for line in rep.lines:
+            print(f"{stamp} {line}")
+
+    try:
+        state_file.write_text(json.dumps(state, indent=1, sort_keys=True) + "\n",
+                              encoding="utf-8")
+    except OSError as exc:
+        print(f"[state] aviso: nao consegui gravar {state_file}: {exc}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

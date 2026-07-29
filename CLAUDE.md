@@ -30,15 +30,27 @@ principais o compromisso de commitar. Em ciclo (hook `Stop` + cron 30 min), lê 
 `X.Y.Z - descrição` a partir do `version.md` (determinístico; Sonnet só como
 fallback), commita e pusha a branch atual.
 
-Irmão do **AUDITOR** (`~/x/AUDITOR`): mesmo padrão de documentação, mesma política
+Irmão do **AUDITOR** (`~/x/skill-AUDITOR`): mesmo padrão de documentação, mesma política
 de scheduler, padrões de segredo vendorizados do `redact.py` de lá.
 
 ---
 
-## ⚠️ Estado do projeto: proposta fechada, sem implementação
+## ⚠️ Estado do projeto: F1 entregue, piloto armado
 
-Existe **apenas documentação** (F0). Nenhum script, hook, teste ou instalação. Ao
-trabalhar aqui:
+O que **existe e roda**: `skill/committer/committer_cycle.py` (pipeline
+determinístico completo, com `--dry-run`), `secret_scan.py` (vendorizado do
+AUDITOR) e **20 testes** verificados por mutação. Piloto: este repo + SHVIA-WEB,
+marcadores instalados; cron no `SPEC.md` §3.
+
+O que **não existe**: fallback Sonnet (F3 — sem ele o SHVIA-WEB só vigia, não
+commita), hook `Stop` (F2 restante), sweep do PS nos repos da casa (F4).
+
+```bash
+python3 -m unittest discover -s tests -v          # 20 testes
+python3 skill/committer/committer_cycle.py <repo> --dry-run --quiet-min 0
+```
+
+Ao trabalhar aqui:
 
 - **Não descreva como pronto** o que é spec. `SPEC.md` marca com ⛔ o que falta.
 - **Não feche pendência (P-01 a P-05) dentro de um how-to** — decisão nova vira ADR
@@ -114,5 +126,5 @@ marcador.
 - Escopo e fases: [.continue/escopo-projeto.md](.continue/escopo-projeto.md)
 - Estado atual: [.continue/estado-atual.md](.continue/estado-atual.md)
 - Perfil do agente: [.claude/README.md](.claude/README.md)
-- Irmão: `~/x/AUDITOR` (padrões de segredo, política de scheduler)
+- Irmão: `~/x/skill-AUDITOR` (padrões de segredo, política de scheduler)
 - Remoto: `github.com/samirhvbr/skill-COMMITTER` (privado) · branch `master`

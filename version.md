@@ -1,6 +1,6 @@
 # Versão — skill-COMMITTER
 
-**Versão atual:** `0.1.0`
+**Versão atual:** `0.2.0`
 
 > Este arquivo é a **fonte da verdade** da versão do projeto. Qualquer lugar que
 > precise exibir ou reportar a versão extrai o **primeiro número semver (`X.Y.Z`)**
@@ -66,6 +66,66 @@ COMMITTER usar a versão atual no fallback sem inventar número (ADR-002).
 ## 3. Changelog
 
 > Ordem decrescente (mais recente no topo).
+
+### `0.2.0` — 2026-07-29 — F1: núcleo determinístico do ciclo, scan de segredo e piloto armado
+
+Bump de **`Y`**: fase F1 concluída. Este commit foi feito **pelo próprio committer**
+(dogfood) — o título desta entrada é a mensagem, e o trailer `Committed-By` está no
+corpo.
+
+**Código**
+- `skill/committer/committer_cycle.py` — pipeline completo do SPEC §1 sem modelo:
+  marcador fail-closed (chave desconhecida = nada feito), sanidade
+  (merge/rebase/bisect/conflito/detached/branch_only), no-op silencioso, janela
+  quieta por mtime, `git add -A`, scan de segredo com exclusão do arquivo (ADR-005),
+  mensagem determinística via changelog do `version.md` staged, commit com trailer
+  `Committed-By: committer/<versão>`, push da branch atual com ponte `gh` automática
+  p/ HTTPS e 3-strikes sem force (ADR-006), estado + lock com stale em
+  `~/.local/state/committer/` (P-01). `--dry-run` e `--quiet-min` para uso manual.
+- `skill/committer/secret_scan.py` — padrões **vendorizados** do `redact.py` do
+  AUDITOR (fonte da verdade dos regexes é lá), adaptados para detecção nas linhas
+  **adicionadas** do diff staged — segredo antigo já commitado não bloqueia o
+  arquivo para sempre.
+- Extrator cobre os dois formatos da casa: entrada com título → determinístico;
+  `version.md` só-número (SHVIA-WEB) → "fallback necessário", com versão detectada
+  reportada, stage desfeito e árvore intocada. Sem changelog o committer **nunca
+  inventa mensagem** (ADR-002).
+
+**Achado do dogfood (e por que ele valida o desenho)**
+- O primeiro `--dry-run` no próprio repo marcou `committer_cycle.py` como segredo:
+  o padrão `assigned-secret` casava `tokens = out.split("\0")` — linha de parser.
+  Falso positivo de classe que bloquearia o arquivo do produto para sempre.
+- Correção **na fonte da verdade** (`redact.py` do skill-AUDITOR, com teste de
+  regressão lá) e re-vendorizada aqui: valor sem `()` + lookahead de fronteira —
+  expressão de código tem parêntese, segredo real (AWS/JWT/base64/hex) não. Só
+  excluir da classe não bastava: o motor casava um **prefixo** do valor.
+
+**Testes** — 21, nos dois sentidos, sem dependência externa
+- `tests/test_cycle.py`: opt-in invisível, kill-switch, marcador inválido
+  fail-closed, no-op mudo, janela quieta, merge/detached/branch_only, mensagem do
+  topo do changelog, duas entradas → topo, bump-sem-título não commita, segredo
+  plantado fica fora e o resto entra, caminho sensível, só-segredo = nada, push
+  falho mantém commit e conta strike, push off, lock concorrente, dry-run.
+- Verificado por **mutação**: neutralizar o scan derruba 3 testes.
+
+**Decisões**
+- **ADR-008** — auth da invocação de modelo (pergunta do Samir sobre API key +
+  "outro user agent"): `subscription` | `api-key` | `shvia` (gateway da casa);
+  chave nunca no marcador; implementação na F3.
+- **P-01** e **P-05** fechadas (estado XDG; piloto = skill-COMMITTER + SHVIA-WEB);
+  **P-03** meio fechada (cron = crontab do Linux — rotinas agendadas do Claude Code
+  são cloud e não enxergam `~/x`).
+
+**Piloto**
+- Marcadores `.committer.yml` nos dois repos (`branch_only: master`).
+- Linha de crontab pronta no `SPEC.md` §3 (instalação é do Samir; rodar 1× manual
+  antes). Enquanto F3 não existe, o SHVIA-WEB fica em modo vigia: reporta, trava
+  segredo, não commita.
+
+_Gatilhos:_ fase concluída (Y), comportamento novo de script, política de segurança
+exercida em código, ADR aceito.
+
+---
 
 ### `0.1.0` — 2026-07-29 — Baseline: pipeline, ADRs e modelo de ameaça
 

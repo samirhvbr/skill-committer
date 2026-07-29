@@ -81,8 +81,10 @@ comportamento sem entrada de changelog), anota a pendência no relatório.
 - Estado **local, fora dos repos participantes e não versionado** — diferente do
   AUDITOR (lá o estado é checkpoint de auditoria compartilhável; aqui o git já é a
   fonte durável — o último commit é consultável). Guarda apenas `last_checked`,
-  `last_commit` por repo e locks. ⛔ Caminho exato (`~/.local/state/committer/`?) na
-  F1.
+  `last_commit`, `push_fails` por repo e locks.
+- Caminho (P-01, fechada): **`$XDG_STATE_HOME/committer/`** —
+  `~/.local/state/committer/` com `state.json`, `locks/` e `cron.log`. Lock por repo
+  com `O_EXCL`; stale (>30 min) é quebrado e retomado.
 
 ---
 
@@ -91,14 +93,21 @@ comportamento sem entrada de changelog), anota a pendência no relatório.
 A **presença** do arquivo é o opt-in. Todas as chaves têm default:
 
 ```yaml
-enabled: true          # false = kill-switch local sem apagar o marcador
-push: true             # false = só commita, não pusha
-quiet_window_min: 5    # janela quieta
-branch_only: null      # ex.: master — se setado, só commita nessa branch
-credential_bridge: gh  # gh | none (SSH)
-lfs_bypass: false      # true em SHVIA-WEB / matomo
-fallback: sonnet       # modelo do fallback; "off" = só caminho determinístico
+enabled: true            # false = kill-switch local sem apagar o marcador
+push: true               # false = só commita, não pusha
+quiet_window_min: 5      # janela quieta
+branch_only: null        # ex.: master — se setado, só commita nessa branch
+credential_bridge: auto  # auto = ponte gh só quando o remote é http(s) | gh | none
+lfs_bypass: false        # true onde os filtros LFS existem sem git-lfs (caso matomo)
+fallback: sonnet         # modelo do fallback; "off" = só caminho determinístico
 ```
+
+Chave desconhecida ou tipo errado = **marcador inválido = nada feito** (fail-closed:
+um typo em `enabled` não pode virar silêncio).
+
+> Nota de campo (29/07): no SHVIA-WEB os filtros LFS estão configurados mas não há
+> `.gitattributes` — nenhum arquivo casa com o filtro, push normal funciona e o
+> marcador de lá vai com `lfs_bypass: false`. A chave existe para o caso matomo.
 
 Regra herdada do AUDITOR (ADR-009 de lá): o marcador só pode **restringir** o
 comportamento, nunca ampliar — não existe chave que libere force, outra branch ou
@@ -112,9 +121,19 @@ bump.
 
 | Gatilho | Papel |
 |---|---|
-| Hook `Stop` do agente principal | **Primário** — fim de turno é árvore em ponto de descanso; dispara o pipeline do repo da sessão |
-| Cron **30 min** | Rede de segurança — pega sessões mortas sem `Stop` e trabalho manual |
+| Hook `Stop` do agente principal | **Primário** — fim de turno é árvore em ponto de descanso; dispara o pipeline do repo da sessão. ⛔ Mecânica na F2 (P-03) |
+| Cron **30 min** | Rede de segurança — pega sessões mortas sem `Stop` e trabalho manual. **Decidido: crontab do Linux** (rotinas agendadas do Claude Code rodam na nuvem, não enxergam `~/x`) |
 | Janela quieta 5 min | Guarda transversal dos dois |
+
+Linha de crontab do piloto (instalada pelo Samir; rodar o script uma vez manual
+antes, para criar `~/.local/state/committer/`):
+
+```cron
+*/30 * * * * PATH=/usr/bin:/bin /usr/bin/python3 /home/samir/x/skill-COMMITTER/skill/committer/committer_cycle.py /home/samir/x/skill-COMMITTER /home/samir/x/SHVIA/SHVIA-WEB >> /home/samir/.local/state/committer/cron.log 2>&1
+```
+
+(`PATH` explícito porque a ponte de credencial invoca `gh`, e o PATH do cron é
+mínimo. `gh` vive em `/usr/bin` nesta máquina.)
 
 Lock por repo (arquivo em estado local): dois disparos simultâneos (Stop + cron) →
 o segundo desiste em silêncio. O mesmo lock ordena COMMITTER × AUDITOR — nunca os
@@ -127,6 +146,11 @@ dois ciclos no mesmo repo ao mesmo tempo.
 - Caminho determinístico: **nenhum modelo**.
 - Fallback: `sonnet` (subagente/headless com `model: sonnet`), entrada = diff staged,
   saída = uma linha ou `ABORT`. Sem tools. ⛔ Teto de invocações por dia na F3.
+- **Auth do fallback (ADR-008):** `subscription` (default, login local) · `api-key`
+  (`ANTHROPIC_API_KEY` dedicada no ambiente do cron) · `shvia` (`ANTHROPIC_BASE_URL`
+  → gateway ShvIA + chave `shvia_usr_…`, auditoria/custo no painel; depende da prova
+  de fio do inbound 2.42.0). **Chave nunca no `.committer.yml`** — o marcador é
+  versionado no repo alvo; credencial vem do ambiente do serviço.
 
 ---
 

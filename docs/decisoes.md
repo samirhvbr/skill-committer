@@ -134,12 +134,42 @@ ADR. Decisão nova entra aqui, com data e status, no mesmo commit da mudança.
 
 ---
 
+## ADR-008 — Auth da invocação de modelo: assinatura, API key dedicada ou gateway ShvIA
+
+- **Data:** 2026-07-29 · **Status:** Aceito (direção; implementação na F3)
+- **Contexto:** pergunta do Samir — "podemos incluir em ambas as skills o uso por
+  API KEY também, usando um outro user agent?". Não viajou: execução headless via
+  cron não deve depender da sessão logada, e isolar identidade e custo do trabalho
+  autônomo é higiene.
+- **Decisão:** a invocação de modelo (aqui, **só o fallback** — o caminho
+  determinístico não usa modelo nenhum) suporta três modos:
+  1. `subscription` (default) — login local do Claude Code; sem custo extra, mas
+     consome a franquia da assinatura e exige sessão válida na máquina.
+  2. `api-key` — `ANTHROPIC_API_KEY` dedicada no **ambiente do cron/serviço**;
+     paga por token, isola a franquia, gasto medível e chave revogável.
+  3. `shvia` — `ANTHROPIC_BASE_URL` apontando para o gateway ShvIA
+     (inbound Anthropic-compat do SHVIA-WEB 2.42.0) + chave `shvia_usr_…`: o
+     fallback roda **pela infra da casa**, com auditoria e custo no painel.
+     ⚠️ Pré-requisito: a prova de fio real do inbound ainda está pendente lá.
+- **Identidade ("outro user agent"):** não precisa de usuário de sistema separado —
+  identidade = **chave dedicada** + trailer `Committed-By` no commit (já decidido).
+  Autor git separado fica como opção futura, não default.
+- **Regra dura:** chave **NUNCA** no `.committer.yml` — o marcador é versionado no
+  repo alvo. Credencial vem do ambiente do cron/serviço, e de mais lugar nenhum.
+- **Consequência:** o AUDITOR ganha a mesma pendência (registrada lá como P-12) —
+  lá afeta o ciclo inteiro, não só um fallback.
+
+---
+
 ## Decisões pendentes
 
 | # | Pendência | Bloqueia | Fase |
 |---|---|---|---|
-| **P-01** | Caminho exato do estado local e formato do lock | Implementação | F1 |
 | **P-02** | Esquema JSON formal do `.committer.yml` + validador | Robustez | F1 |
-| **P-03** | Mecânica exata do hook `Stop` (o hook dispara o script ou agenda?) e do cron (rotina agendada vs crontab) | Gatilhos | F2 |
+| **P-03** | Mecânica exata do hook `Stop` (o hook dispara o script ou agenda?) — a metade do cron está decidida: **crontab do Linux**, porque as rotinas agendadas do Claude Code rodam na nuvem e não enxergam `~/x` | Gatilhos | F2 |
 | **P-04** | Teto de invocações do fallback por dia | Custo | F3 |
-| **P-05** | Repos do piloto (sugestão: este + um de movimento real) e critérios de aprovação antes do sweep do PS | Rollout | F4 |
+
+**Resolvidas em 29/07:** **P-01** — estado local em `$XDG_STATE_HOME/committer/`
+(`~/.local/state/committer/`), lock por repo com stale de 30 min · **P-05** —
+piloto = **skill-COMMITTER + SHVIA-WEB** (decisão do Samir); critérios de aprovação
+no escopo F4.
