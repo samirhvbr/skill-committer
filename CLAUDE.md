@@ -42,15 +42,21 @@ O que **existe e roda**: `skill/committer/committer_cycle.py` (pipeline completo
 (F3: modos `subscription`/`api-key`/`shvia`, validador mecânico, teto diário) e
 **43 testes** verificados por mutação (scan E validador).
 
-**Participantes (29/07, sweep de marcadores):** 24 repos da casa — todos os nossos
-com `version.md`, exceto forks de terceiro e o balde `000/`. O cron não lista mais
-caminho nenhum: chama `~/x/GIT/run.sh`, que descobre quem tem `.committer.yml`
-(`SPEC.md` §3). Repos sem `version.md` ficaram de fora **de propósito** — sem ele
-não há formato da casa, e o ciclo pararia em "fallback necessário" toda vez.
+**Participantes (29/07, F4 concluída):** **43 repos** com marcador — 40 ativos e 3
+desligados (`ai-usagebar`, `BLUE3-LINUX`, `GITHUB-DESKTOP`: forks/derivados de
+upstream, fluxo de PR). O balde `000/` fica fora na origem, pelo `run.sh`. O cron não
+lista caminho nenhum: chama `~/x/GIT/run.sh`, que **descobre** quem tem
+`.committer.yml` (`SPEC.md` §3). O **bloco PS** está nos `CLAUDE.md`/`AGENTS.md` de
+todos os participantes com doc de agente — é ele que faz os agentes pararem de
+commitar.
 
-O que **não existe**: hook `Stop` (F2 restante), **bloco PS** nos `CLAUDE.md`/
-`AGENTS.md` dos participantes (metade restante da F4 — é ele que faz os agentes
-pararem de commitar; até lá vale o fluxo antigo), agrupamento por assunto (v2).
+⚠️ **16 participantes ainda não têm `version.md`** (AI-BENCHMARK, BLUE3-* diversos,
+IA-MODELFILES, LINUX-START, MIGRANDO-ZIMBRA-CARBONIO, samirhvbr, SHVIA-WORKSPACE,
+SYSADM-SERVER…). Sem ele não há o formato `X.Y.Z - descrição`, então o ciclo
+**reporta e não commita** nesses repos. Criar o `version.md` em cada um é decisão do
+projeto, não da skill.
+
+O que **não existe**: hook `Stop` (F2 restante), agrupamento por assunto (v2).
 
 ```bash
 python3 -m unittest discover -s tests -v          # 43 testes, sem modelo real
@@ -139,3 +145,32 @@ marcador.
 - Perfil do agente: [.claude/README.md](.claude/README.md)
 - Irmão: `~/x/SKILLS/skill-AUDITOR` (padrões de segredo, política de scheduler)
 - Remoto: `github.com/samirhvbr/skill-COMMITTER` (privado) · branch `master`
+
+---
+
+## PS — Commits: a skill COMMITTER cuida disso
+
+**Existe `.committer.yml` na raiz deste repositório** — é o opt-in da skill
+**COMMITTER**, que roda em ciclo (cron, via `~/x/GIT/run.sh`). Enquanto esse arquivo
+existir com `enabled: true`, **commitar e pushar não é trabalho seu**.
+
+**O que muda para você:**
+
+- **Não commite nem pushe por padrão.** Conclua a entrega bumpando o `version.md`
+  **com a entrada de changelog** e deixe a árvore pronta. É dali que a mensagem do
+  commit sai — o changelog virou o artefato de handoff entre você e a skill.
+- A skill monta `X.Y.Z - descrição`, commita e pusha a branch atual sozinha. Ela
+  **nunca bumpa versão** (isso continua sendo julgamento seu) e nunca inventa
+  mensagem: sem entrada de changelog ela cai num fallback Sonnet, e sem conseguir
+  descrever com honestidade ela aborta e espera.
+
+**Você ainda commita quando:**
+
+- o Samir pedir explicitamente;
+- a tarefa exigir o SHA na hora (deploy, abrir PR, referência cruzada);
+- o `.committer.yml` sumir ou estiver `enabled: false` — aí vale o fluxo antigo,
+  você bumpa, commita e pusha.
+
+**Por que isso existe:** tirar de um modelo caro (Opus/Fable) o trabalho mecânico de
+empacotar commit, que um Sonnet — ou, na maioria das vezes, nenhum modelo — resolve.
+Economiza token e devolve tempo de desenvolvimento.
