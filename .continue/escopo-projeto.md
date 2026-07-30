@@ -51,16 +51,16 @@ Entregue em 29/07: `skill/committer/fallback.py` + integração no ciclo.
 **Pronto quando — atingido:** diff sem changelog vira mensagem específica ou
 `ABORT`/rejeição reportados; injeção plantada não dirige a mensagem.
 
-## F4 — Piloto e rollout ◐ (piloto armado)
+## F4 — Piloto e rollout ✅ (0.4.0)
 
 - ✅ Repos do piloto (P-05, decisão do Samir): **skill-COMMITTER + SHVIA-WEB**,
   marcadores instalados, `branch_only: master` nos dois (conservador).
-- ⛔ Medir critérios de aprovação: % de ciclos determinísticos, zero segredo
-  publicado, zero commit em janela ativa, zero commit-lixo (os 3 zips soltos do
-  SHVIA-WEB são o caso de teste natural — hoje ficam de fora porque sem changelog
-  não há commit).
-- ⛔ **Sweep do bloco PS** nos `CLAUDE.md`/`AGENTS.md` + marcador nos demais repos
-  da casa — só depois do piloto aprovado.
+- ✅ **Sweep do bloco PS** feito, com o condicional verificável (presença do
+  marcador na raiz, não "se a skill existir no ambiente").
+- ⛔ **Medir em operação**: % de ciclos determinísticos vs fallback, zero segredo
+  publicado, zero commit em janela ativa. Só o tempo de cron dá esse número.
+- ⛔ **16 participantes sem `version.md`** — reportam e não commitam. Adotar o
+  versionamento em cada um é decisão do projeto.
 
 **Pronto quando:** os repos da casa operam com o COMMITTER e os agentes principais
 pararam de commitar por padrão.

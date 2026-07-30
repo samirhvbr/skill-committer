@@ -42,10 +42,34 @@ Piloto com F3:
   `shvia.zip`) que o `.gitignore` de lá não cobre. O committer não julga lixo por
   desenho; a decisão é humana.
 
+- **2026-07-30 — `0.4.0` (F4): rollout na casa.** 43 repos com marcador (40 ativos),
+  bloco PS em 42 `CLAUDE.md`/`AGENTS.md`, AUDITOR no piloto de 2 repos. Quatro
+  desligados com motivo escrito: `ai-usagebar`, `BLUE3-LINUX`, `GITHUB-DESKTOP`
+  (forks/derivados) e **`EOP`** — descoberto no rollout que ele é governado por
+  ruleset do GitHub (PR + review + code owner + `docs-lint`), então push direto é
+  recusado por regra e commit autônomo não pertence ao fluxo de lá.
+
+---
+
 ## Próximo passo
 
-**F2 restante — hook `Stop`** (P-03): disparo pós-turno. Depois F4: medir o piloto
-e fazer o sweep do PS + marcadores nos repos da casa.
+**F2 restante — hook `Stop`** (P-03): disparo pós-turno, para o commit sair ao fim
+do trabalho em vez de esperar até 55 min.
+
+Depois: **medir a F4 em operação** — proporção determinístico × fallback, zero
+segredo publicado, zero commit em janela ativa.
+
+## Achados do rollout (valem registro)
+
+- **EOP** tem ruleset no GitHub que recusa push direto na master. O marcador dele já
+  estava versionado com `enabled: true` (sweep anterior) — o override local está por
+  `git update-index --skip-worktree`, que faz a árvore ficar limpa e o ciclo
+  respeitar o desligamento. **A correção durável é um PR** mudando o marcador no
+  remoto; enquanto não for, uma máquina nova voltaria a ter EOP ativo.
+- Marcadores de fork são **local-only** (`.git/info/exclude`): um `.committer.yml`
+  versionado num fork apareceria no diff de PRs futuros para o upstream de terceiro.
+- Dois `AGENTS.md` da casa são **symlinks** para `CLAUDE.md` (BLUE3-INTRANET,
+  SSHVTERM-WEB) — quem editar em massa precisa saber, ou duplica conteúdo.
 
 ## Precisa do Samir
 
