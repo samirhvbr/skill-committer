@@ -78,17 +78,23 @@ paralelas no mesmo repo.
 
 ## Mudança de hábito nos agentes principais
 
-Bloco a incluir nos `CLAUDE.md`/`AGENTS.md` dos repos participantes. Os **marcadores**
-já foram instalados nos 24 repos (29/07) e a varredura é do `~/x/GIT/run.sh`; **este
-bloco ainda não foi para os repos** — é ele que muda o hábito dos agentes, e enquanto
-não for, o fluxo antigo (o agente commita) continua valendo:
+**F4 concluída em 29/07/2026.** Os marcadores estão em **43 repos** (40 ativos + 3
+desligados) e o bloco `## PS — Commits: a skill COMMITTER cuida disso` foi para os
+`CLAUDE.md`/`AGENTS.md` de todos os participantes com doc de agente.
 
-> **PS — Commits:** Existindo a skill **COMMITTER** neste ambiente, o agente NÃO
-> commita nem pusha por padrão: conclui a entrega bumpando `version.md` + entrada de
-> changelog (é dali que o committer tira a mensagem) e deixa a árvore pronta.
-> Exceções: o Samir pediu commit explícito, ou a tarefa exige commit/push imediato
-> (SHA para referência, deploy, PR). Forks/contribuições de terceiros ficam fora dos
-> dois fluxos.
+O condicional é **verificável pelo próprio agente**, e não uma referência vaga a "se
+a skill existir no ambiente": o gatilho é a **presença de `.committer.yml` na raiz do
+repositório** — o mesmo arquivo que é o opt-in. Se ele sumir ou virar
+`enabled: false`, o próprio bloco manda voltar ao fluxo antigo.
+
+O que o bloco estabelece:
+
+- o agente **não commita nem pusha por padrão**; conclui a entrega bumpando o
+  `version.md` **com a entrada de changelog** (é dali que a mensagem sai) e deixa a
+  árvore pronta;
+- ele **ainda commita** quando o Samir pede, quando a tarefa exige o SHA na hora
+  (deploy, PR, referência cruzada), ou quando o marcador não está ativo;
+- forks e contribuições de terceiros ficam fora dos dois fluxos.
 
 ## Limitações declaradas da v1
 

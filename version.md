@@ -1,6 +1,6 @@
 # Versão — skill-COMMITTER
 
-**Versão atual:** `0.3.1`
+**Versão atual:** `0.4.0`
 
 > Este arquivo é a **fonte da verdade** da versão do projeto. Qualquer lugar que
 > precise exibir ou reportar a versão extrai o **primeiro número semver (`X.Y.Z`)**
@@ -81,6 +81,52 @@ COMMITTER usar a versão atual no fallback sem inventar número (ADR-002).
   continua sendo do marcador.
 - Doc de estado corrigida: a F4 ainda deve o **bloco PS** nos `CLAUDE.md`/
   `AGENTS.md` — enquanto ele não for, os agentes seguem commitando como antes.
+
+### `0.4.0` — 2026-07-29 — F4: rollout na casa — 43 repos com marcador e o bloco PS nas docs
+
+Bump de **`Y`**: fase F4 concluída. A skill deixa de ser piloto de 2 repos e passa a
+valer para a casa inteira.
+
+**Marcadores — 43 repos** (`~/x/GIT/run.sh --list` confirma)
+- **40 ativos**: todos os nossos repos com clone local nos dois orgs.
+- **3 desligados** com `enabled: false` e o motivo escrito no próprio arquivo:
+  `ai-usagebar` e `BLUE3-LINUX` (forks) e `GITHUB-DESKTOP` (derivado do upstream do
+  GitHub Desktop, 39k+ commits). Fluxo lá é PR, não commit direto — ADR-004/T-03.
+- **Nossos forks em `000/`** (ai-memory, claude-desktop-debian, FRANK_KARAOKE,
+  hermes-agent, mtzSpider, sinalrf, Vitals, ai-usagebar-samir, matomo-blue3) também
+  receberam marcador desligado, mas **local-only** (via `.git/info/exclude`): o
+  arquivo documenta a decisão nesta máquina sem entrar em PR para o upstream de
+  terceiro. O `run.sh` já exclui `000/` inteiro na origem.
+- **Terceiros puros** (litellm, headroom, 9router, CSL-Redes, speedtest, TDAH,
+  github-visualize, docsys_blue3, upstream do ai-usagebar) não receberam nada.
+
+**Bloco PS nas documentações — 42 arquivos**
+- `## PS — Commits: a skill COMMITTER cuida disso` nos `CLAUDE.md`/`AGENTS.md` de
+  todos os participantes com doc de agente.
+- O condicional ficou **verificável**: o gatilho é a presença de `.committer.yml` na
+  raiz — o mesmo arquivo que é o opt-in — e não uma referência vaga a "se a skill
+  existir". Marcador ausente ou `enabled: false` → o próprio bloco manda voltar ao
+  fluxo antigo.
+- Dois `AGENTS.md` são **symlinks** para `CLAUDE.md` (BLUE3-INTRANET,
+  SSHVTERM-WEB) — detectados, sem duplicação.
+
+**AUDITOR (piloto próprio, decisão do Samir)**
+- `.auditor/config.yml` + `.auditor/README.md` + `.claude/skills/auditor/` em
+  **skill-AUDITOR e SHVIA-WEB**. Hook `PreToolUse` do gate registrado no
+  `settings.json` dos dois **preservando os hooks existentes** (o SHVIA-WEB tem
+  PostToolUse/Stop do impeccable). Smoke test nos dois sentidos: transparente fora
+  de um ciclo, bloqueia dentro.
+- Continua **sem executor headless** — o `run.sh` só lista quem optou.
+
+**Limitação declarada**
+- **16 participantes não têm `version.md`**: sem ele não há o formato da casa, e o
+  ciclo reporta sem commitar. Adotar o versionamento em cada um é decisão do
+  projeto, não da skill — o marcador diz isso no próprio comentário.
+
+_Gatilhos:_ fase concluída (Y), mudança de alcance da skill, alteração de
+documentação normativa em 42 arquivos.
+
+---
 
 ### `0.3.0` — 2026-07-29 — F3: fallback com validador anti-injeção, três modos de auth e teto diário
 
