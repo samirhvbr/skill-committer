@@ -49,6 +49,13 @@ Piloto com F3:
   ruleset do GitHub (PR + review + code owner + `docs-lint`), então push direto é
   recusado por regra e commit autônomo não pertence ao fluxo de lá.
 
+- **2026-07-30 — `0.5.0`: revisão pós-rollout.** A F4 mostrou que o desenho não
+  estava se cumprindo: **18 de 24 participantes** caíam sempre no fallback (o
+  `version.md` deles é só-número), e um bug fazia repo travado **reinvocar o modelo
+  a cada ciclo sobre o mesmo diff**, esgotando o teto de todos. ADR-009 (changelog
+  desacoplado do `version.md`) + ADR-010 (backoff e teto por repo). Criados os 16
+  `version.md` que faltavam. Repos que commitam **sem modelo: 1 → 16**.
+
 ---
 
 ## Próximo passo
@@ -59,7 +66,25 @@ do trabalho em vez de esperar até 55 min.
 Depois: **medir a F4 em operação** — proporção determinístico × fallback, zero
 segredo publicado, zero commit em janela ativa.
 
+## Trabalho barato que sobrou (alto retorno)
+
+**Criar `CHANGELOG.md` nos repos que ainda caem no fallback** — SHVIA-WEB, AREA81,
+BLUE3-INTRANET, BLUE3-SITE-FRONT, ONLINE, GIT, LINUX, SAMIRHV, SHVIA-BENCH,
+SHVIA-CODE, SHVIA-DESKTOP, SHVIA-MOBILE, SSHVTERM-*. Cada um vira determinístico
+(commit sem custo, mensagem melhor) **sem tocar no `version.md`** que a produção lê
+— é exatamente para isso que o ADR-009 existe. É criar um arquivo por repo.
+
 ## Achados do rollout (valem registro)
+
+- **O prompt precisa declarar os limites que o validador aplica.** As duas primeiras
+  rejeições em repo real (SHVIA-WEB 170 chars, SHVIA-DESKTOP 155, contra teto de
+  140) eram mensagens **boas, só compridas** — e o prompt nunca dizia o limite ao
+  modelo. Teto subiu para 160, o prompt passou a declará-lo, e um teste agora
+  **falha se os dois divergirem de novo**. Divergência silenciosa entre prompt e
+  validador queima teto e trava repo sem explicar.
+- **Mudar o validador invalida o backoff.** Depois de corrigir o limite, as falhas
+  memorizadas não valiam mais e precisaram ser limpas do estado à mão. Se validador
+  ou prompt mudarem de novo, limpar `fallback_failed_tree` faz parte da entrega.
 
 - **EOP** tem ruleset no GitHub que recusa push direto na master. O marcador dele já
   estava versionado com `enabled: true` (sweep anterior) — o override local está por

@@ -38,6 +38,10 @@ VERSION - Descrição curta em português
 
 - Exatamente uma linha, sem aspas, sem prefixo, sem explicação antes ou depois.
 - `VERSION` literal da entrada (ex.: `2.88.5 - Corrige o parse do intervalo no seletor`).
+- **Máximo de 160 caracteres na linha inteira** (contando `VERSION` e o ` - `).
+  Mire em **100–130**: é o tamanho das boas mensagens da casa. Passou de 160, a
+  mensagem é **rejeitada** e o commit não acontece — então corte antes de responder.
+  Se o diff tem mais assunto do que cabe, descreva o principal e sinalize o resto.
 - Descrição **específica**: o que mudou e onde, legível em `git log --oneline`,
   encontrável em `git log --grep`.
 - **Proibido**: "ajustes", "melhorias", "correções", "update", "wip", "mudanças

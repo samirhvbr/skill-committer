@@ -67,21 +67,6 @@ COMMITTER usar a versão atual no fallback sem inventar número (ADR-002).
 
 > Ordem decrescente (mais recente no topo).
 
-### `0.3.1` — 2026-07-29 — Sweep de marcadores nos 24 repos da casa; o cron passa a chamar o run.sh
-
-- **Marcadores instalados** em 24 repositórios (todos os nossos com `version.md`;
-  forks de terceiro e o balde `000/` ficam fora por regra, não por esquecimento).
-  Repos sem `version.md` **não** receberam marcador: sem ele não há formato da casa
-  e o ciclo pararia em "fallback necessário" em todo disparo.
-- **Gatilho deixa de carregar caminhos** (`SPEC.md` §3): a crontab chama
-  `~/x/GIT/run.sh`, que varre a árvore e entrega ao ciclo só quem tem marcador.
-  Antes a lista era fixa na linha do cron — a skill só rodava nos dois repos do
-  piloto, e repo novo exigia editar a crontab.
-- §1.1 registra a divisão: a **varredura** é do sweeper, a **elegibilidade**
-  continua sendo do marcador.
-- Doc de estado corrigida: a F4 ainda deve o **bloco PS** nos `CLAUDE.md`/
-  `AGENTS.md` — enquanto ele não for, os agentes seguem commitando como antes.
-
 ### `0.5.0` — 2026-07-30 — Revisão pós-rollout: o caminho determinístico volta a existir
 
 Bump de **`Y`**: dois ADRs que mudam a direção. A F4 pôs a skill para rodar na casa
@@ -124,7 +109,16 @@ inteira e, com isso, mostrou que **o desenho não estava se cumprindo**.
   adotar o número real evita duas histórias contando coisas diferentes.
 - Efeito medido: repos que commitam **sem modelo** foram de **1 para 16**.
 
-**Testes — 50**, e as três mudanças verificadas por mutação (desligar o backoff
+**Prompt × validador: divergência silenciosa (achado em produção)**
+- As duas primeiras rejeições em repo real — SHVIA-WEB (170 chars) e SHVIA-DESKTOP
+  (155), contra teto de 140 — eram mensagens **boas, só compridas**: o validador
+  impunha o limite e **o prompt nunca o declarava ao modelo**. Teto para 160, prompt
+  passa a declará-lo, e um teste novo **falha se os dois divergirem de novo**.
+- Efeito colateral registrado: mudar o validador **invalida o backoff** — as falhas
+  memorizadas tiveram de ser limpas do estado. Vale para toda mudança futura de
+  prompt ou validador.
+
+**Testes — 51**, e as três mudanças verificadas por mutação (desligar o backoff
 derruba 2, o teto por repo 1, o changelog desacoplado 1).
 
 _Gatilhos:_ dois ADRs aceitos que mudam a direção, comportamento novo do ciclo,
@@ -177,6 +171,21 @@ _Gatilhos:_ fase concluída (Y), mudança de alcance da skill, alteração de
 documentação normativa em 42 arquivos.
 
 ---
+
+### `0.3.1` — 2026-07-29 — Sweep de marcadores nos 24 repos da casa; o cron passa a chamar o run.sh
+
+- **Marcadores instalados** em 24 repositórios (todos os nossos com `version.md`;
+  forks de terceiro e o balde `000/` ficam fora por regra, não por esquecimento).
+  Repos sem `version.md` **não** receberam marcador: sem ele não há formato da casa
+  e o ciclo pararia em "fallback necessário" em todo disparo.
+- **Gatilho deixa de carregar caminhos** (`SPEC.md` §3): a crontab chama
+  `~/x/GIT/run.sh`, que varre a árvore e entrega ao ciclo só quem tem marcador.
+  Antes a lista era fixa na linha do cron — a skill só rodava nos dois repos do
+  piloto, e repo novo exigia editar a crontab.
+- §1.1 registra a divisão: a **varredura** é do sweeper, a **elegibilidade**
+  continua sendo do marcador.
+- Doc de estado corrigida: a F4 ainda deve o **bloco PS** nos `CLAUDE.md`/
+  `AGENTS.md` — enquanto ele não for, os agentes seguem commitando como antes.
 
 ### `0.3.0` — 2026-07-29 — F3: fallback com validador anti-injeção, três modos de auth e teto diário
 

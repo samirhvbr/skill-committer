@@ -70,7 +70,15 @@ class TestValidator(unittest.TestCase):
         self.bad("2.88.6 - ajustes", "curta demais")
 
     def test_rejeita_mensagem_gigante(self) -> None:
-        self.bad("2.88.6 - " + "palavra " * 40, "max 140")
+        self.bad("2.88.6 - " + "palavra " * 40, "max 160")
+
+    def test_limite_do_prompt_bate_com_o_do_validador(self) -> None:
+        """As duas primeiras rejeicoes em repo real foram mensagens boas, so
+        compridas: o validador impunha 140 e o prompt nao dizia o limite ao modelo.
+        Divergir de novo quebraria o fallback do mesmo jeito, em silencio."""
+        system = fb.load_system_prompt()
+        self.assertIn(str(fb.MESSAGE_MAX_LEN), system,
+                      "o prompt precisa declarar o mesmo teto que o validador aplica")
 
     def test_rejeita_segredo_ecoado(self) -> None:
         vazado = "AKIA" + "R" * 16

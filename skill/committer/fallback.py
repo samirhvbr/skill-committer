@@ -44,7 +44,12 @@ PROMPT_FILE = Path(__file__).resolve().parents[2] / "prompts" / "committer-fallb
 DEFAULT_DAILY_CAP = 24        # teto GLOBAL do dia, somando todos os repos
 DEFAULT_REPO_DAILY_CAP = 6    # teto do dia POR REPO — evita starvation
 DIFF_MAX_CHARS = 60_000          # ~15k tokens; o STAT completo sempre vai inteiro
-MESSAGE_MAX_LEN = 140            # maior mensagem real da casa fica ~100 chars
+# Teto da linha inteira. Subiu de 140 → 160 em 30/07: as duas primeiras rejeicoes em
+# repo real (SHVIA-WEB 170, SHVIA-DESKTOP 155) eram mensagens BOAS, so compridas — e
+# o prompt nao dizia o limite ao modelo, entao ele nao tinha como respeitar. O
+# conserto de verdade foi contar o limite no prompt; o teto so acompanhou o tamanho
+# real das mensagens da casa (as boas ficam em 120-130).
+MESSAGE_MAX_LEN = 160
 SUBSCRIPTION_TIMEOUT_S = 180
 API_TIMEOUT_S = 90
 
