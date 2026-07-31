@@ -50,10 +50,20 @@ credencial em URL, `VAR_SECRET=…`) rodando sobre `git diff --cached`. Encontro
 (ADR-005). O COMMITTER nunca edita conteúdo — bloqueia o arquivo inteiro.
 
 ### 1.7 Mensagem
-1. **Determinístico (caminho feliz, zero tokens):** `version.md` está entre os
-   arquivos staged **e** o diff dele adiciona entrada nova no topo do changelog →
+1. **Determinístico (caminho feliz, zero tokens):** um dos **arquivos de changelog**
+   está entre os staged **e** o diff dele adiciona entrada nova no topo →
    mensagem = `X.Y.Z - <título da entrada>`. O próprio diff denuncia que o agente
    principal preparou o handoff.
+
+   Arquivos procurados, em ordem: **`CHANGELOG.md`** → **`docs/VERSION.md`** →
+   **`version.md`**. O marcador pode fixar outro com `changelog_file:`.
+
+   > **Por que a entrada não precisa estar no `version.md`** (ADR-009): a maioria dos
+   > repos da casa lê o `version.md` em **runtime**, e vários com
+   > `trim(file_get_contents())` — que devolve o arquivo inteiro. Transformar aquele
+   > arquivo em markdown quebraria a versão exibida em produção. Um `CHANGELOG.md`
+   > novo não tem esse acoplamento: o repo vira determinístico sem tocar em código.
+   > A **versão** continua saindo do `version.md`; o changelog só guarda o título.
 2. **Fallback (Sonnet):** senão → o subagente recebe `VERSION` (a atual do
    `version.md`, repetida — sancionado, ADR-002), `STAT` completo e `DIFF`
    (truncado em 60 KB se preciso) e escreve **uma linha** honesta em português.
@@ -117,6 +127,7 @@ branch_only: null        # ex.: master — se setado, só commita nessa branch
 credential_bridge: auto  # auto = ponte gh só quando o remote é http(s) | gh | none
 lfs_bypass: false        # true onde os filtros LFS existem sem git-lfs (caso matomo)
 fallback: sonnet         # modelo do fallback; "off" = só caminho determinístico
+changelog_file: null     # null = tenta CHANGELOG.md → docs/VERSION.md → version.md
 ```
 
 Chave desconhecida ou tipo errado = **marcador inválido = nada feito** (fail-closed:
@@ -186,9 +197,16 @@ dois ciclos no mesmo repo ao mesmo tempo.
     (auditoria/custo no painel; depende da prova de fio do inbound 2.42.0).
   - **Chave nunca no `.committer.yml`** — o marcador é versionado no repo alvo;
     credencial vem do ambiente do serviço.
-- **Teto diário (P-04, fechada):** default **24** invocações/dia, global; env
-  `COMMITTER_FALLBACK_DAILY_CAP` ajusta (`0` = kill-switch). Contador no
-  `state.json`; estourou = fallback indisponível, o repo espera.
+- **Tetos diários (P-04, fechada):** **24/dia global**
+  (`COMMITTER_FALLBACK_DAILY_CAP`) **e 6/dia por repo**
+  (`COMMITTER_FALLBACK_REPO_CAP`); `0` em qualquer um = kill-switch. Contadores no
+  `state.json`. O teto por repo existe porque o global sozinho tem **starvation**:
+  um repo movimentado consumiria a cota de todos (ADR-010).
+- **Backoff por árvore inalterada (ADR-010):** falha em que o modelo **viu o diff**
+  (`ABORT`, saída rejeitada) grava o hash do diff no estado e **não reinvoca até a
+  árvore mudar** — sem isso, ~26 tentativas/dia sobre o mesmo diff esgotavam o teto.
+  Falha **transitória** (teto, rede, CLI ausente, auth) **não** gera backoff: seria
+  bloqueio permanente por problema passageiro. Sucesso limpa o registro.
 - **Test-hook/extensão:** env `COMMITTER_FALLBACK_CMD` = comando que lê o payload
   JSON no stdin e imprime a linha — usado pela suíte (fakes, inclusive um que
   obedece injeção) e serve para plugar gerador local. Passa pelo **mesmo**

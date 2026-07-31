@@ -161,6 +161,55 @@ ADR. Decisão nova entra aqui, com data e status, no mesmo commit da mudança.
 
 ---
 
+## ADR-009 — Changelog desacoplado do `version.md`
+
+- **Data:** 2026-07-30 · **Status:** Aceito
+- **Contexto:** o rollout da F4 expôs que o caminho determinístico — o coração do
+  desenho, "zero tokens no caminho feliz" — **quase não existia na prática**: de 24
+  participantes, **18 tinham `version.md` em formato só-número**, então todo commit
+  neles caía no fallback e custava uma chamada Sonnet.
+- **O que impedia a correção óbvia:** converter os 18 `version.md` para markdown com
+  changelog quebraria produção. **14 deles são lidos em runtime** (PHP, Rust,
+  Python, TypeScript, shell) e vários com `trim(file_get_contents())`, que devolve o
+  **arquivo inteiro** — o SHVIA-WEB passaria a exibir um documento markdown como
+  número de versão. Consertar 14 parsers de produção para uma melhoria de fluxo de
+  commit é risco desproporcional.
+- **Decisão:** a entrada de changelog **não precisa estar no `version.md`**. A skill
+  procura, nesta ordem: `CHANGELOG.md`, `docs/VERSION.md`, `version.md` — e o
+  marcador pode apontar outro via `changelog_file:`.
+- **Consequência:** um repo cujo `version.md` é lido em runtime vira determinístico
+  **criando um arquivo novo**, sem tocar em código. A versão continua saindo do
+  `version.md` (fonte da verdade); o changelog é só onde o **título** da entrega mora.
+- **Alternativa descartada:** aceitar `version.md` só-número e gerar a mensagem do
+  diff sempre pelo modelo — mantinha o custo, que é justamente o que se quer evitar.
+
+---
+
+## ADR-010 — Backoff por árvore inalterada e teto de fallback por repo
+
+- **Data:** 2026-07-30 · **Status:** Aceito
+- **Contexto (bug real, achado ao revisar a F4):** quando o fallback não produzia
+  mensagem — `ABORT`, saída rejeitada, modelo fora do ar — o ciclo desfazia o stage
+  e retornava **sem memorizar nada**. No disparo seguinte, a árvore era a mesma, o
+  diff era o mesmo, e o modelo era invocado de novo. Com cron a cada 55 min, são
+  **~26 tentativas por dia sobre o mesmo diff**, contra um teto de 24. Um único repo
+  travado **esgotava o teto e deixava todos os outros sem fallback**.
+- **Decisão:**
+  1. **Backoff por árvore inalterada** — o hash do diff staged que falhou fica no
+     estado; enquanto a árvore não mudar, o modelo não é reinvocado.
+  2. **Só falha do diff gera backoff.** `generate_message` passa a devolver se a
+     falha veio do modelo ter visto aquele diff (`ABORT`, saída rejeitada) ou se foi
+     **transitória** (teto, rede, CLI ausente, auth). Memorizar transitória viraria
+     bloqueio permanente por problema passageiro — defeito achado pelo próprio teste
+     ao escrever esta mudança.
+  3. **Teto diário por repo** (`COMMITTER_FALLBACK_REPO_CAP`, default 6) **além do
+     global** (24). O teto global sozinho tem starvation: um repo movimentado
+     consome a cota de todos.
+- **Consequência:** sucesso limpa o backoff; mudar a árvore libera nova tentativa.
+  Um repo com diff indescritível fica quieto até alguém agir, sem custo recorrente.
+
+---
+
 ## Decisões pendentes
 
 | # | Pendência | Bloqueia | Fase |

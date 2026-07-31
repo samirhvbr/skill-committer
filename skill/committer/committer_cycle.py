@@ -39,6 +39,14 @@ MARKER = ".committer.yml"
 LOCK_STALE_S = 30 * 60
 FF_FAILS_LIMIT = 3
 
+# Arquivos onde a entrada de changelog e procurada, em ordem, quando o marcador nao
+# aponta um. Existe porque a maioria dos repos da casa le o `version.md` em RUNTIME
+# (PHP/Rust/Python/shell) e varios com `trim(file_get_contents())`, que pega o
+# arquivo inteiro — transformar aquele arquivo em markdown quebraria a versao
+# exibida em producao. Um `CHANGELOG.md` novo nao tem esse acoplamento: o repo vira
+# deterministico sem tocar em codigo (ADR-009).
+CHANGELOG_CANDIDATES = ("CHANGELOG.md", "docs/VERSION.md", "version.md")
+
 # Chaves aceitas no marcador e seus defaults (SPEC §2). Chave desconhecida e ERRO
 # (fail-closed): typo em "enabled" nao pode virar silencio.
 MARKER_DEFAULTS: dict[str, object] = {
@@ -49,6 +57,7 @@ MARKER_DEFAULTS: dict[str, object] = {
     "credential_bridge": "auto",   # auto = bridge gh so quando o remote e http(s)
     "lfs_bypass": False,
     "fallback": "sonnet",
+    "changelog_file": None,        # None = tenta CHANGELOG_CANDIDATES em ordem
 }
 
 # -c aplicados quando lfs_bypass=true: neutralizam os filtros LFS em maquinas sem
@@ -266,27 +275,44 @@ def secret_sweep(repo: Path, cfg_extra: list[str], rep: Report) -> list[str]:
     return offenders
 
 
-def extract_message(repo: Path, cfg_extra: list[str]) -> tuple[str | None, str | None]:
+def changelog_paths(repo: Path, cfg: dict) -> list[str]:
+    """Arquivos onde procurar a entrada de changelog, na ordem de preferencia."""
+    named = cfg.get("changelog_file")
+    if named:
+        return [str(named)]
+    return [c for c in CHANGELOG_CANDIDATES if (repo / c).is_file()]
+
+
+def extract_message(repo: Path, cfg_extra: list[str],
+                    cfg: dict) -> tuple[str | None, str | None]:
     """Estagio 1.7 caminho deterministico. Retorna (mensagem, versao_detectada).
 
-    mensagem != None  → entrada de changelog com titulo no topo do diff staged do
-                        version.md: e a mensagem do commit.
+    mensagem != None  → entrada de changelog com titulo no diff staged de um dos
+                        arquivos de changelog: e a mensagem do commit.
     mensagem == None  → sem entrada com titulo. versao_detectada indica se ao menos
-                        houve bump de numero (caso SHVIA-WEB) — de todo jeito o caso
-                        e do fallback (F3)."""
-    names = [p for _, p in staged_files(repo, cfg_extra)]
-    if "version.md" not in names:
-        return None, None
-    diff = git(repo, "diff", "--cached", "-U0", "--", "version.md", cfg=cfg_extra).stdout
+                        houve bump de numero no version.md (caso SHVIA-WEB) — de
+                        todo jeito o caso e do fallback (F3).
+
+    A entrada NAO precisa estar no `version.md`: procuramos tambem em `CHANGELOG.md`
+    e `docs/VERSION.md`. Isso deixa um repo cujo `version.md` e lido em runtime
+    (`trim(file_get_contents())`) virar deterministico so criando um arquivo novo,
+    sem tocar no parser de producao."""
+    names = {p for _, p in staged_files(repo, cfg_extra)}
     version_only: str | None = None
-    for line in diff.splitlines():
-        m = CHANGELOG_ENTRY.match(line)
-        if m:
-            return f"{m.group(1)} - {m.group(2)}", m.group(1)
-        if version_only is None:
-            v = VERSION_ONLY.match(line)
-            if v:
-                version_only = v.group(1)
+
+    for candidate in changelog_paths(repo, cfg):
+        if candidate not in names:
+            continue
+        diff = git(repo, "diff", "--cached", "-U0", "--", candidate,
+                   cfg=cfg_extra).stdout
+        for line in diff.splitlines():
+            m = CHANGELOG_ENTRY.match(line)
+            if m:
+                return f"{m.group(1)} - {m.group(2)}", m.group(1)
+            if candidate == "version.md" and version_only is None:
+                v = VERSION_ONLY.match(line)
+                if v:
+                    version_only = v.group(1)
     return None, version_only
 
 
@@ -389,7 +415,7 @@ def cycle(repo: Path, args: argparse.Namespace, state: dict) -> Report:
             git(repo, "reset", "-q")
             return rep
 
-        message, version_seen = extract_message(repo, cfg_extra)
+        message, version_seen = extract_message(repo, cfg_extra, cfg)
         used_fallback = False
         if message is None:
             # ADR-002: sem entrada de changelog com titulo, o caso e do fallback
@@ -411,19 +437,41 @@ def cycle(repo: Path, args: argparse.Namespace, state: dict) -> Report:
                 return rep
             stat = git(repo, "diff", "--cached", "--stat", cfg=cfg_extra).stdout
             diff = git(repo, "diff", "--cached", cfg=cfg_extra).stdout
+
+            # BACKOFF POR ARVORE INALTERADA. Sem isto, um repo cujo fallback falha
+            # (ABORT, saida rejeitada, modelo fora do ar) e reinvocado a CADA ciclo
+            # sobre o MESMO diff: ~26 tentativas por dia, que esgotam o teto e
+            # deixam todos os outros repos sem fallback. Se a arvore nao mudou desde
+            # a ultima falha, nem tentamos — o resultado seria o mesmo.
+            tree_id = hashlib.sha1(diff.encode("utf-8", "replace")).hexdigest()[:16]
+            if st.get("fallback_failed_tree") == tree_id:
+                rep.add(f"fallback ja falhou nesta arvore ({st.get('fallback_failed_why', '?')}) "
+                        "— nao reinvoca ate a arvore mudar (backoff). "
+                        "Resolva no repo ou escreva a entrada de changelog")
+                git(repo, "reset", "-q")
+                return rep
+
             if args.dry_run:
                 rep.add(f"dry-run: invocaria o fallback ({detail}; "
                         f"versao {version}, modelo {cfg['fallback']})")
                 git(repo, "reset", "-q")
                 return rep
-            message, why = fb.generate_message(
+            message, why, falha_do_diff = fb.generate_message(
                 version, stat, diff, str(cfg["fallback"]), state,
-                state_dir() / "sandbox")
+                state_dir() / "sandbox", repo_state=st)
             if message is None:
+                # So memoriza quando o modelo VIU o diff e falhou nele. Teto, rede,
+                # CLI ausente e auth sao transitorios — memorizar viraria bloqueio
+                # permanente por problema passageiro.
+                if falha_do_diff:
+                    st["fallback_failed_tree"] = tree_id
+                    st["fallback_failed_why"] = why
                 rep.add(f"fallback nao produziu mensagem ({why}) — {detail}; "
                         "stage desfeito, arvore intocada")
                 git(repo, "reset", "-q")
                 return rep
+            st.pop("fallback_failed_tree", None)
+            st.pop("fallback_failed_why", None)
             used_fallback = True
             rep.add(f"mensagem via fallback {cfg['fallback']}: {message}")
 

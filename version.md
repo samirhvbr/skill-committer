@@ -1,6 +1,6 @@
 # Versão — skill-COMMITTER
 
-**Versão atual:** `0.4.0`
+**Versão atual:** `0.5.0`
 
 > Este arquivo é a **fonte da verdade** da versão do projeto. Qualquer lugar que
 > precise exibir ou reportar a versão extrai o **primeiro número semver (`X.Y.Z`)**
@@ -81,6 +81,56 @@ COMMITTER usar a versão atual no fallback sem inventar número (ADR-002).
   continua sendo do marcador.
 - Doc de estado corrigida: a F4 ainda deve o **bloco PS** nos `CLAUDE.md`/
   `AGENTS.md` — enquanto ele não for, os agentes seguem commitando como antes.
+
+### `0.5.0` — 2026-07-30 — Revisão pós-rollout: o caminho determinístico volta a existir
+
+Bump de **`Y`**: dois ADRs que mudam a direção. A F4 pôs a skill para rodar na casa
+inteira e, com isso, mostrou que **o desenho não estava se cumprindo**.
+
+**O que a revisão achou**
+- **O caminho determinístico quase não existia.** De 24 participantes, **18 tinham
+  `version.md` em formato só-número** → todo commit neles custava uma chamada
+  Sonnet. "Zero tokens no caminho feliz" valia para 6 repos.
+- **Bug de custo com amplificação global.** Fallback que falhava não memorizava
+  nada: no ciclo seguinte, mesma árvore, mesmo diff, nova invocação. Com cron de
+  55 min são ~26 tentativas/dia contra um teto de 24 — **um repo travado esgotava o
+  teto e deixava todos os outros sem fallback**.
+- **Converter os 18 `version.md` quebraria produção.** 14 são lidos em runtime
+  (PHP/Rust/Python/TS/shell), vários com `trim(file_get_contents())`, que devolve o
+  arquivo inteiro — o SHVIA-WEB passaria a exibir markdown como número de versão.
+
+**ADR-009 — changelog desacoplado do `version.md`**
+- A entrada passa a ser procurada em `CHANGELOG.md` → `docs/VERSION.md` →
+  `version.md`, ou no que `changelog_file:` apontar. Um repo com `version.md` lido em
+  runtime vira determinístico **criando um arquivo novo**, sem tocar em código.
+- A versão continua saindo do `version.md` (fonte da verdade); o changelog só guarda
+  o **título** da entrega.
+
+**ADR-010 — backoff e teto por repo**
+- **Backoff por árvore inalterada**: o hash do diff que falhou fica no estado e o
+  modelo não é reinvocado até a árvore mudar. Sucesso limpa.
+- **Só falha do diff gera backoff.** `generate_message` passa a informar se a falha
+  veio do modelo ter visto aquele diff (`ABORT`, saída rejeitada) ou se foi
+  transitória (teto, rede, CLI, auth). Memorizar transitória viraria bloqueio
+  permanente — **defeito que o próprio teste pegou** enquanto a mudança era escrita.
+- **Teto por repo** (`COMMITTER_FALLBACK_REPO_CAP`, default 6) além do global (24),
+  contra starvation.
+
+**version.md nos 16 participantes que não tinham**
+- Criados com gatilhos de bump **por categoria** (web / script / documentação):
+  boilerplate único seria ignorado — "nova tela" não diz nada num repo de
+  provisionamento. `0.1.0` marca o início do versionamento, não do projeto.
+- **BRASILEIRAO_A_2026 nasce em `0.15.0`**: já tinha 17 tags, a última `v0.15.0`;
+  adotar o número real evita duas histórias contando coisas diferentes.
+- Efeito medido: repos que commitam **sem modelo** foram de **1 para 16**.
+
+**Testes — 50**, e as três mudanças verificadas por mutação (desligar o backoff
+derruba 2, o teto por repo 1, o changelog desacoplado 1).
+
+_Gatilhos:_ dois ADRs aceitos que mudam a direção, comportamento novo do ciclo,
+chave nova no marcador, política de custo alterada.
+
+---
 
 ### `0.4.0` — 2026-07-29 — F4: rollout na casa — 43 repos com marcador e o bloco PS nas docs
 

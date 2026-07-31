@@ -41,7 +41,8 @@ from secret_scan import scan_text
 
 PROMPT_FILE = Path(__file__).resolve().parents[2] / "prompts" / "committer-fallback.md"
 
-DEFAULT_DAILY_CAP = 24
+DEFAULT_DAILY_CAP = 24        # teto GLOBAL do dia, somando todos os repos
+DEFAULT_REPO_DAILY_CAP = 6    # teto do dia POR REPO — evita starvation
 DIFF_MAX_CHARS = 60_000          # ~15k tokens; o STAT completo sempre vai inteiro
 MESSAGE_MAX_LEN = 140            # maior mensagem real da casa fica ~100 chars
 SUBSCRIPTION_TIMEOUT_S = 180
@@ -179,27 +180,60 @@ def _call_api(system: str, user: str, model_id: str) -> str:
 
 # ── orquestracao ─────────────────────────────────────────────────────────────
 
-def _under_daily_cap(state: dict) -> bool:
-    cap = int(os.environ.get("COMMITTER_FALLBACK_DAILY_CAP", DEFAULT_DAILY_CAP))
+def _cap_for(bucket: dict, env: str, default: int) -> bool:
+    """True se o balde `bucket` ainda esta abaixo do teto do dia. Poda dias antigos
+    de passagem — so o dia corrente interessa."""
+    cap = int(os.environ.get(env, default))
     today = time.strftime("%Y-%m-%d")
-    calls = state.setdefault("fallback_calls", {})
+    calls = bucket.setdefault("fallback_calls", {})
     for day in [d for d in calls if d != today]:
-        del calls[day]  # so interessa o dia corrente
+        del calls[day]
     return calls.get(today, 0) < cap
 
 
-def _count_call(state: dict) -> None:
+def _under_daily_cap(state: dict, repo_state: dict | None = None) -> tuple[bool, str]:
+    """Dois tetos: o GLOBAL do dia e o POR REPO.
+
+    O global sozinho tem um defeito de starvation: um repo movimentado (ou com
+    fallback falhando) consome a cota e todos os outros ficam sem. O teto por repo
+    limita o estrago ao repo que o causou."""
+    if not _cap_for(state, "COMMITTER_FALLBACK_DAILY_CAP", DEFAULT_DAILY_CAP):
+        return False, "teto diario GLOBAL de invocacoes do fallback atingido (P-04)"
+    if repo_state is not None and not _cap_for(
+            repo_state, "COMMITTER_FALLBACK_REPO_CAP", DEFAULT_REPO_DAILY_CAP):
+        return False, "teto diario DESTE REPO atingido (P-04) — os outros seguem"
+    return True, ""
+
+
+def _count_call(state: dict, repo_state: dict | None = None) -> None:
     today = time.strftime("%Y-%m-%d")
-    calls = state.setdefault("fallback_calls", {})
-    calls[today] = calls.get(today, 0) + 1
+    for bucket in (state, repo_state):
+        if bucket is None:
+            continue
+        calls = bucket.setdefault("fallback_calls", {})
+        calls[today] = calls.get(today, 0) + 1
 
 
 def generate_message(version: str, stat: str, diff: str, model_alias: str,
-                     state: dict, sandbox: Path) -> tuple[str | None, str]:
-    """Retorna (mensagem, detalhe). mensagem=None significa: nao commite —
-    `detalhe` explica (teto, ABORT, saida invalida, indisponibilidade)."""
-    if not _under_daily_cap(state):
-        return None, "teto diario de invocacoes do fallback atingido (P-04)"
+                     state: dict, sandbox: Path,
+                     repo_state: dict | None = None) -> tuple[str | None, str, bool]:
+    """Retorna (mensagem, detalhe, falha_do_diff).
+
+    mensagem=None significa: nao commite — `detalhe` explica.
+
+    `falha_do_diff` separa dois mundos, e a distincao importa porque o chamador usa
+    isso para decidir o backoff:
+
+    - **True**  — o modelo VIU este diff e nao produziu mensagem valida (ABORT ou
+      saida rejeitada). Reinvocar sobre a mesma arvore daria o mesmo resultado, entao
+      o chamador memoriza e para de tentar ate a arvore mudar.
+    - **False** — a falha nao tem relacao com o diff: teto do dia, CLI ausente, rede,
+      auth, config errada. Sao TRANSITORIAS; memorizar isso viraria bloqueio
+      permanente por um problema passageiro (achado no teste de 30/07).
+    """
+    allowed, motivo = _under_daily_cap(state, repo_state)
+    if not allowed:
+        return None, motivo, False
 
     system = load_system_prompt()
     user = build_user_input(version, stat, diff)
@@ -216,15 +250,16 @@ def generate_message(version: str, stat: str, diff: str, model_alias: str,
             raw = _call_subscription(system, user, model_alias, sandbox)
         elif mode in ("api-key", "shvia"):
             if mode == "shvia" and not os.environ.get("ANTHROPIC_BASE_URL"):
-                return None, "modo shvia exige ANTHROPIC_BASE_URL no ambiente"
+                return None, "modo shvia exige ANTHROPIC_BASE_URL no ambiente", False
             raw = _call_api(system, user, model_id)
         else:
-            return None, f"COMMITTER_FALLBACK_AUTH invalido: {mode!r}"
+            return None, f"COMMITTER_FALLBACK_AUTH invalido: {mode!r}", False
     except FallbackUnavailable as exc:
-        return None, f"fallback indisponivel: {exc}"
+        return None, f"fallback indisponivel: {exc}", False
 
-    _count_call(state)
+    _count_call(state, repo_state)
     message, reason = validate_output(raw, version)
     if message is None:
-        return None, f"saida do modelo rejeitada ({reason})"
-    return message, "fallback"
+        # O modelo viu ESTE diff e nao deu conta: falha do diff, cabe backoff.
+        return None, f"saida do modelo rejeitada ({reason})", True
+    return message, "fallback", False

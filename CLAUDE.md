@@ -40,7 +40,7 @@ de scheduler, padrões de segredo vendorizados do `redact.py` de lá.
 O que **existe e roda**: `skill/committer/committer_cycle.py` (pipeline completo,
 `--dry-run`), `secret_scan.py` (vendorizado do skill-AUDITOR), `fallback.py`
 (F3: modos `subscription`/`api-key`/`shvia`, validador mecânico, teto diário) e
-**43 testes** verificados por mutação (scan E validador).
+**50 testes** verificados por mutação (scan, validador, backoff, teto e changelog).
 
 **Participantes (29/07, F4 concluída):** **43 repos** com marcador — 40 ativos e 3
 desligados (`ai-usagebar`, `BLUE3-LINUX`, `GITHUB-DESKTOP`: forks/derivados de
@@ -50,27 +50,30 @@ lista caminho nenhum: chama `~/x/GIT/run.sh`, que **descobre** quem tem
 todos os participantes com doc de agente — é ele que faz os agentes pararem de
 commitar.
 
-⚠️ **16 participantes ainda não têm `version.md`** (AI-BENCHMARK, BLUE3-* diversos,
-IA-MODELFILES, LINUX-START, MIGRANDO-ZIMBRA-CARBONIO, samirhvbr, SHVIA-WORKSPACE,
-SYSADM-SERVER…). Sem ele não há o formato `X.Y.Z - descrição`, então o ciclo
-**reporta e não commita** nesses repos. Criar o `version.md` em cada um é decisão do
-projeto, não da skill.
+**Custo (revisado na 0.5.0):** o caminho determinístico custa **zero tokens** e é o
+normal; o fallback Sonnet é exceção. Se um repo cai sempre no fallback, o defeito é
+falta de entrada de changelog — não da skill. Os 16 participantes que não tinham
+`version.md` ganharam um em 30/07, e repos que commitam sem modelo foram de 1 → 16.
+
+⚠️ **Ainda em fallback:** os repos cujo `version.md` é só-número (SHVIA-WEB, AREA81,
+SSHVTERM-*, …). O caminho barato para eles é criar um **`CHANGELOG.md`** — a skill
+procura a entrada lá também (ADR-009), sem tocar no `version.md` que a produção lê.
 
 O que **não existe**: hook `Stop` (F2 restante), agrupamento por assunto (v2).
 
 ```bash
-python3 -m unittest discover -s tests -v          # 43 testes, sem modelo real
+python3 -m unittest discover -s tests -v          # 50 testes, sem modelo real
 python3 skill/committer/committer_cycle.py <repo> --dry-run --quiet-min 0
 ```
 
 Envs do fallback: `COMMITTER_FALLBACK_AUTH` (`subscription`|`api-key`|`shvia`),
-`COMMITTER_FALLBACK_DAILY_CAP` (default 24; `0` desliga),
+`COMMITTER_FALLBACK_DAILY_CAP` (24 global) e `COMMITTER_FALLBACK_REPO_CAP` (6 por repo),
 `COMMITTER_FALLBACK_CMD` (test-hook). Chave **nunca** no marcador.
 
 Ao trabalhar aqui:
 
 - **Não descreva como pronto** o que é spec. `SPEC.md` marca com ⛔ o que falta.
-- **Não feche pendência (P-01 a P-05) dentro de um how-to** — decisão nova vira ADR
+- **Não feche pendência dentro de um how-to** — decisão nova vira ADR
   em [docs/decisoes.md](docs/decisoes.md).
 - **Não confunda "escrito" com "implementado"** — regra herdada do AUDITOR: controle
   só conta com teste que **falha quando o controle é desligado**.
@@ -103,6 +106,10 @@ os commits daqui seguem o fluxo manual da casa.)
 6. Push da **branch atual**, nunca force/amend/rebase; falha de push não é fatal e
    nunca escala (ADR-006).
 7. Agrupamento por assunto = **v2**, com modelo (ADR-007).
+8. Changelog **desacoplado** do `version.md`: entrada vale em `CHANGELOG.md`,
+   `docs/VERSION.md` ou `version.md` (ADR-009).
+9. **Backoff por árvore inalterada** + teto por repo; só falha do diff memoriza,
+   transitória não (ADR-010).
 
 E o que o COMMITTER **nunca** faz: bumpar versão, editar conteúdo de arquivo,
 resolver conflito/merge, trocar de branch, mensagem vaga, commit em repo sem

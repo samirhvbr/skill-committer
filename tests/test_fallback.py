@@ -92,17 +92,38 @@ class TestDailyCap(unittest.TestCase):
     def test_teto_bloqueia_e_dias_antigos_sao_podados(self) -> None:
         today = time.strftime("%Y-%m-%d")
         state = {"fallback_calls": {"2020-01-01": 99, today: fb.DEFAULT_DAILY_CAP}}
-        self.assertFalse(fb._under_daily_cap(state))
+        allowed, motivo = fb._under_daily_cap(state)
+        self.assertFalse(allowed)
+        self.assertIn("GLOBAL", motivo)
         self.assertNotIn("2020-01-01", state["fallback_calls"])
 
     def test_env_ajusta_teto(self) -> None:
         state: dict = {}
         os.environ["COMMITTER_FALLBACK_DAILY_CAP"] = "0"
         try:
-            self.assertFalse(fb._under_daily_cap(state), "cap 0 = kill-switch")
+            self.assertFalse(fb._under_daily_cap(state)[0], "cap 0 = kill-switch")
         finally:
             del os.environ["COMMITTER_FALLBACK_DAILY_CAP"]
-        self.assertTrue(fb._under_daily_cap(state))
+        self.assertTrue(fb._under_daily_cap(state)[0])
+
+    def test_teto_por_repo_nao_derruba_os_outros(self) -> None:
+        """Starvation: sem teto por repo, um repo movimentado consome a cota global
+        e todos os demais ficam sem fallback."""
+        today = time.strftime("%Y-%m-%d")
+        state: dict = {}
+        cheio = {"fallback_calls": {today: fb.DEFAULT_REPO_DAILY_CAP}}
+        allowed, motivo = fb._under_daily_cap(state, cheio)
+        self.assertFalse(allowed)
+        self.assertIn("DESTE REPO", motivo)
+        # outro repo, mesmo estado global, continua liberado
+        self.assertTrue(fb._under_daily_cap(state, {})[0])
+
+    def test_contagem_bate_nos_dois_baldes(self) -> None:
+        today = time.strftime("%Y-%m-%d")
+        state: dict = {}; repo: dict = {}
+        fb._count_call(state, repo)
+        self.assertEqual(state["fallback_calls"][today], 1)
+        self.assertEqual(repo["fallback_calls"][today], 1)
 
 
 class CycleWithFakeModel(unittest.TestCase):
@@ -230,6 +251,96 @@ class CycleWithFakeModel(unittest.TestCase):
         state = json.loads((self.state_home / "committer" / "state.json").read_text())
         today = time.strftime("%Y-%m-%d")
         self.assertEqual(state["fallback_calls"][today], 1)
+
+    def test_backoff_nao_reinvoca_na_mesma_arvore(self) -> None:
+        """O BUG que o rollout expos: sem backoff, um repo cujo fallback falha era
+        reinvocado a cada ciclo sobre o MESMO diff — ~26 chamadas/dia, esgotando o
+        teto e deixando todos os outros repos sem fallback."""
+        self.dirty()
+        contador = self.root / "chamadas.txt"
+        cmd = self.fake_model(
+            f"open({str(contador)!r}, 'a').write('x')\nprint('ABORT')")
+        primeiro = self.run_cycle(cmd)
+        self.assertIn("ABORT", primeiro.stdout)
+        self.assertEqual(contador.read_text(), "x", "1a rodada deveria invocar")
+
+        segundo = self.run_cycle(cmd)   # arvore inalterada
+        self.assertIn("backoff", segundo.stdout)
+        self.assertEqual(contador.read_text(), "x",
+                         "2a rodada NAO podia invocar o modelo de novo")
+
+    def test_backoff_libera_quando_a_arvore_muda(self) -> None:
+        """Backoff nao pode virar bloqueio permanente: mexeu no repo, tenta de novo."""
+        self.dirty()
+        contador = self.root / "chamadas.txt"
+        cmd = self.fake_model(
+            f"open({str(contador)!r}, 'a').write('x')\nprint('ABORT')")
+        self.run_cycle(cmd)
+        self.run_cycle(cmd)
+        self.assertEqual(contador.read_text(), "x")
+
+        (self.repo / "outro.py").write_text("novo = 1\n")   # arvore mudou
+        past = time.time() - 1800
+        os.utime(self.repo / "outro.py", (past, past))
+        self.run_cycle(cmd)
+        self.assertEqual(contador.read_text(), "xx", "arvore nova deveria reinvocar")
+
+    def test_falha_transitoria_nao_cria_backoff(self) -> None:
+        """Teto/rede/CLI ausente nao tem relacao com o diff: memorizar viraria
+        bloqueio permanente por problema passageiro. Aqui o 1o ciclo bate no teto
+        (nao invoca), e o 2o — com teto normal — TEM de tentar."""
+        self.dirty()
+        sentinel = self.root / "chamou.txt"
+        cmd = self.fake_model(
+            f"open({str(sentinel)!r}, 'a').write('x')\n"
+            "print('2.88.6 - Adiciona o modulo app com a variavel x')")
+        env = dict(os.environ, XDG_STATE_HOME=str(self.state_home),
+                   COMMITTER_FALLBACK_CMD=cmd, COMMITTER_FALLBACK_DAILY_CAP="0")
+        travado = subprocess.run(
+            [sys.executable, str(SCRIPT), str(self.repo), "--quiet-min", "0"],
+            capture_output=True, text=True, env=env)
+        self.assertIn("teto diario", travado.stdout)
+        self.assertFalse(sentinel.exists())
+
+        liberado = self.run_cycle(cmd)          # mesma arvore, teto normal
+        self.assertNotIn("backoff", liberado.stdout,
+                         "falha por teto nao podia ter criado backoff")
+        self.assertEqual(self.head(), "2.88.6 - Adiciona o modulo app com a variavel x")
+
+    def test_sucesso_limpa_o_backoff_no_estado(self) -> None:
+        """ABORT numa arvore, arvore muda, sucesso: o estado nao pode ficar com o
+        backoff velho pendurado."""
+        self.dirty()
+        self.run_cycle(self.fake_model('print("ABORT")'))
+        st = json.loads((self.state_home / "committer" / "state.json").read_text())
+        chave = next(k for k in st if k.startswith("alvo-"))
+        self.assertIn("fallback_failed_tree", st[chave])
+
+        (self.repo / "outro.py").write_text("novo = 2\n")
+        past = time.time() - 1800
+        os.utime(self.repo / "outro.py", (past, past))
+        self.run_cycle(self.fake_model('print("2.88.6 - Adiciona os modulos app e outro")'))
+        self.assertEqual(self.head(), "2.88.6 - Adiciona os modulos app e outro")
+        st = json.loads((self.state_home / "committer" / "state.json").read_text())
+        self.assertNotIn("fallback_failed_tree", st[chave], "backoff ficou pendurado")
+
+    def test_changelog_em_arquivo_separado_e_deterministico(self) -> None:
+        """A peca que resolve o custo: o repo tem version.md so-numero (lido em
+        runtime por trim(file_get_contents)) e mesmo assim commita SEM modelo,
+        porque a entrada de changelog vive num CHANGELOG.md novo."""
+        sentinel = self.root / "chamou.txt"
+        cmd = self.fake_model(f'open({str(sentinel)!r}, "w").write("x")\nprint("ABORT")')
+        (self.repo / "CHANGELOG.md").write_text(
+            "# Changelog\n\n### `2.88.7` — 2026-07-30 — Adiciona o cache de sessao\n")
+        (self.repo / "version.md").write_text("2.88.7\n")
+        (self.repo / "app.py").write_text("cache = True\n")
+        past = time.time() - 1800
+        for f in ("CHANGELOG.md", "version.md", "app.py"):
+            os.utime(self.repo / f, (past, past))
+        got = self.run_cycle(cmd)
+        self.assertEqual(self.head(), "2.88.7 - Adiciona o cache de sessao")
+        self.assertFalse(sentinel.exists(), "nao podia ter chamado o modelo")
+        self.assertNotIn("fallback", got.stdout)
 
     def test_dry_run_anuncia_sem_invocar(self) -> None:
         self.dirty()
