@@ -178,6 +178,47 @@ class CycleCase(unittest.TestCase):
         self.run_cycle("--quiet-min", "0")
         self.assertEqual(self.head_subject(), "1.3.0 - Entrega de cima")
 
+    # ── SPEC §1.75: trava de versao reutilizada ──────────────────────────
+
+    def test_versao_reutilizada_e_recusada(self) -> None:
+        """Caso real de 01/08 (dois 0.5.4 no SHVIA-MOBILE): entrega nova com
+        entrada de changelog nova mas SEM bump — a versao do assunto ja existe
+        no historico → recusa, stage desfeito, arvore segue suja."""
+        self.marker()
+        self.write_entrega("1.2.0", "Primeira entrega")
+        self.run_cycle("--quiet-min", "0")
+        self.assertEqual(self.head_subject(), "1.2.0 - Primeira entrega")
+        before = self.commit_count()
+
+        (self.repo / "app.py").write_text("intervalo = '45m'\n")
+        (self.repo / "version.md").write_text(
+            "**Versão atual:** `1.2.0`\n\n"
+            "### `1.2.0` — 2026-08-01 — Segunda entrega sem bump\n"
+        )
+        self.age("app.py", "version.md")
+        got = self.run_cycle("--quiet-min", "0")
+        self.assertIn("REUTILIZADA", got.stdout)
+        self.assertEqual(self.commit_count(), before, "nao deveria commitar")
+        staged = sh(self.repo, "git", "diff", "--cached", "--name-only").stdout
+        self.assertEqual(staged.strip(), "", "stage deveria ter sido desfeito")
+        status = sh(self.repo, "git", "status", "--porcelain").stdout
+        self.assertNotEqual(status.strip(), "", "arvore deveria seguir suja")
+
+    def test_bump_depois_da_recusa_passa(self) -> None:
+        """O outro sentido: mesma entrega, versao INEDITA → commit normal."""
+        self.marker()
+        self.write_entrega("1.2.0", "Primeira entrega")
+        self.run_cycle("--quiet-min", "0")
+        (self.repo / "app.py").write_text("intervalo = '45m'\n")
+        (self.repo / "version.md").write_text(
+            "**Versão atual:** `1.2.1`\n\n"
+            "### `1.2.1` — 2026-08-01 — Segunda entrega com bump\n"
+        )
+        self.age("app.py", "version.md")
+        got = self.run_cycle("--quiet-min", "0")
+        self.assertNotIn("REUTILIZADA", got.stdout)
+        self.assertEqual(self.head_subject(), "1.2.1 - Segunda entrega com bump")
+
     def test_bump_sem_titulo_com_fallback_off_nao_commita(self) -> None:
         """Formato SHVIA-WEB: version.md so com numero → caso do fallback. Com
         fallback: off (modo vigia), NADA e commitado e o stage e desfeito."""

@@ -316,6 +316,32 @@ def extract_message(repo: Path, cfg_extra: list[str],
     return None, version_only
 
 
+def version_reused(repo: Path, message: str) -> str | None:
+    """Estagio 1.75 — trava de versao REUTILIZADA.
+
+    Caso real (01/08/2026): sessoes paralelas + fallback produziram dois
+    `0.5.4` no SHVIA-MOBILE e dois `1.1.11` no SHVIA-DESKTOP — o version.md
+    nao tinha sido bumpado desde o commit anterior e a mensagem saiu com a
+    mesma versao. Historico com versao repetida quebra `git log --grep` como
+    indice e mente sobre o que cada versao contem.
+
+    Se o assunto comeca com `X.Y.Z - ` e o historico da branch ja tem commit
+    com o MESMO prefixo de versao, recusamos: postura identica ao fallback sem
+    changelog — aborta e espera um humano/agente bumpar. Retorna o sha
+    conflitante, ou None se a versao e inedita."""
+    m = re.match(r"^(\d+\.\d+\.\d+) - ", message)
+    if not m:
+        return None
+    version = m.group(1)
+    pattern = "^" + version.replace(".", r"\.") + " - "
+    r = git(repo, "log", "--grep", pattern, "--format=%h %s", "-n", "5")
+    for line in r.stdout.splitlines():
+        sha, _, subject = line.partition(" ")
+        if subject.startswith(f"{version} - "):
+            return sha
+    return None
+
+
 def push(repo: Path, branch: str, cfg: dict, cfg_extra: list[str],
          st: dict, rep: Report, dry: bool) -> None:
     """Estagio 1.9. Falha nao e fatal; 3 seguidas param de tentar (ADR-006)."""
@@ -474,6 +500,15 @@ def cycle(repo: Path, args: argparse.Namespace, state: dict) -> Report:
             st.pop("fallback_failed_why", None)
             used_fallback = True
             rep.add(f"mensagem via fallback {cfg['fallback']}: {message}")
+
+        dup = version_reused(repo, message)
+        if dup:
+            rep.add(f"versao REUTILIZADA: {dup} ja usa a versao do assunto "
+                    f"({message.split(' - ', 1)[0]}) — commit recusado; bumpe o "
+                    "version.md (com a entrada de changelog) para versao inedita. "
+                    "Stage desfeito, arvore intocada")
+            git(repo, "reset", "-q")
+            return rep
 
         n_files = len(staged_files(repo, cfg_extra))
         if args.dry_run:

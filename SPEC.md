@@ -86,6 +86,17 @@ credencial em URL, `VAR_SECRET=…`) rodando sobre `git diff --cached`. Encontro
 O COMMITTER **nunca bumpa versão**. Quando o diff claramente merecia bump (mudança de
 comportamento sem entrada de changelog), anota a pendência no relatório.
 
+### 1.75 Trava de versão reutilizada
+Vale para os DOIS caminhos (determinístico e fallback): se o assunto começa com
+`X.Y.Z - ` e o histórico da branch já contém commit com o mesmo prefixo de
+versão, o commit é **recusado** (stage desfeito, árvore intocada) e o relatório
+aponta o sha conflitante. A cura é sempre a mesma: bumpar o `version.md` (com a
+entrada de changelog) para versão inédita.
+
+Motivação (01/08/2026): sessões paralelas + fallback produziram dois `0.5.4` no
+SHVIA-MOBILE e dois `1.1.11` no SHVIA-DESKTOP — versão repetida quebra o
+`git log --grep` como índice e mente sobre o que cada versão contém.
+
 ### 1.8 Commit
 - Autoria: a configuração git do ambiente (como qualquer commit local).
 - Trailer obrigatório identificando a origem, para auditoria via `git log --grep`:

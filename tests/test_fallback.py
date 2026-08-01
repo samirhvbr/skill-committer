@@ -153,7 +153,7 @@ class CycleWithFakeModel(unittest.TestCase):
         (self.repo / "version.md").write_text("2.88.6\n")
         (self.repo / ".committer.yml").write_text("enabled: true\npush: false\n")
         run("git", "add", "-A")
-        run("git", "commit", "-q", "-m", "2.88.6 - Nasce o fixture")
+        run("git", "commit", "-q", "-m", "Nasce o fixture (sem versao no assunto: a trava do SPEC 1.75 recusaria o commit de fallback 2.88.6 se ela ja existisse no historico)")
         self.run_git = run
 
     def fake_model(self, script_body: str) -> str:

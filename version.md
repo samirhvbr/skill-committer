@@ -1,6 +1,6 @@
 # Versão — skill-COMMITTER
 
-**Versão atual:** `0.5.0`
+**Versão atual:** `0.5.1`
 
 > Este arquivo é a **fonte da verdade** da versão do projeto. Qualquer lugar que
 > precise exibir ou reportar a versão extrai o **primeiro número semver (`X.Y.Z`)**
@@ -66,6 +66,16 @@ COMMITTER usar a versão atual no fallback sem inventar número (ADR-002).
 ## 3. Changelog
 
 > Ordem decrescente (mais recente no topo).
+
+### `0.5.1` — 2026-08-01 — Trava de versão reutilizada (SPEC §1.75)
+
+Caso real do mesmo dia: sessões paralelas + fallback produziram dois `0.5.4` no
+SHVIA-MOBILE e dois `1.1.11` no SHVIA-DESKTOP. Agora, nos DOIS caminhos, se o
+assunto começa com `X.Y.Z - ` e o histórico da branch já tem commit com o mesmo
+prefixo de versão, o commit é recusado (stage desfeito) apontando o sha
+conflitante — a cura é bumpar o version.md. Dois testes novos (recusa e o
+sentido oposto); fixture do fallback perdeu a versão do assunto inicial para
+não colidir com a própria trava. Suíte: 53 testes, 0 falhas.
 
 ### `0.5.0` — 2026-07-30 — Revisão pós-rollout: o caminho determinístico volta a existir
 
