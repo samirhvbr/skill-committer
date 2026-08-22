@@ -3,7 +3,7 @@
 > **Leia também:** [README.md](README.md) (o produto) ·
 > [SECURITY.md](SECURITY.md) (**leitura obrigatória** — modelo de ameaça) ·
 > [SPEC.md](SPEC.md) (pipeline normativo e `.committer.yml`) ·
-> [docs/decisoes.md](docs/decisoes.md) (ADR-001 a ADR-007 + pendências) ·
+> [docs/decisoes.md](docs/decisoes.md) (ADR-001 a ADR-011 + pendências) ·
 > [prompts/committer-fallback.md](prompts/committer-fallback.md) (prompt do fallback) ·
 > [version.md](version.md) (versão + formato de commit).
 >
@@ -40,7 +40,7 @@ de scheduler, padrões de segredo vendorizados do `redact.py` de lá.
 O que **existe e roda**: `skill/committer/committer_cycle.py` (pipeline completo,
 `--dry-run`), `secret_scan.py` (vendorizado do skill-AUDITOR), `fallback.py`
 (F3: modos `subscription`/`api-key`/`shvia`, validador mecânico, teto diário) e
-**50 testes** verificados por mutação (scan, validador, backoff, teto e changelog).
+**61 testes** verificados por mutação (scan, validador, backoff, teto e changelog).
 
 **Participantes (29/07, F4 concluída):** **43 repos** com marcador — 40 ativos e 3
 desligados (`ai-usagebar`, `BLUE3-LINUX`, `GITHUB-DESKTOP`: forks/derivados de
@@ -62,7 +62,7 @@ procura a entrada lá também (ADR-009), sem tocar no `version.md` que a produç
 O que **não existe**: hook `Stop` (F2 restante), agrupamento por assunto (v2).
 
 ```bash
-python3 -m unittest discover -s tests -v          # 50 testes, sem modelo real
+python3 -m unittest discover -s tests -v          # 61 testes, sem modelo real
 python3 skill/committer/committer_cycle.py <repo> --dry-run --quiet-min 0
 ```
 
@@ -110,6 +110,8 @@ os commits daqui seguem o fluxo manual da casa.)
    `docs/VERSION.md` ou `version.md` (ADR-009).
 9. **Backoff por árvore inalterada** + teto por repo; só falha do diff memoriza,
    transitória não (ADR-010).
+10. **Estado de outra skill tem dono, e não é este ciclo:** `skip_paths` no marcador
+    tira o caminho do stage, da janela quieta e da conta de "árvore suja" (ADR-011).
 
 E o que o COMMITTER **nunca** faz: bumpar versão, editar conteúdo de arquivo,
 resolver conflito/merge, trocar de branch, mensagem vaga, commit em repo sem

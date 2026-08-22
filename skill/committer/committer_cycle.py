@@ -9,6 +9,8 @@ Decisoes em docs/decisoes.md (ADR-001 a ADR-008). Resumo do contrato:
   sem entrada com titulo → o caso e do fallback Sonnet (F3, ainda nao implementado):
   este script REPORTA e desfaz o stage, nunca inventa mensagem (ADR-002).
 - Segredo no staged → exclui o(s) arquivo(s), commita o resto, reporta (ADR-005).
+- `skip_paths` no marcador → o caminho nem e staged: estado de outra skill tem dono,
+  e nao e este ciclo (ADR-011).
 - Push da branch atual, nunca force; falha nao e fatal, 3 seguidas param (ADR-006).
 - Nunca bumpa versao, nunca edita conteudo, nunca resolve conflito.
 
@@ -58,6 +60,7 @@ MARKER_DEFAULTS: dict[str, object] = {
     "lfs_bypass": False,
     "fallback": "sonnet",
     "changelog_file": None,        # None = tenta CHANGELOG_CANDIDATES em ordem
+    "skip_paths": None,            # CSV de caminhos que o ciclo nao stagea (ADR-011)
 }
 
 # -c aplicados quando lfs_bypass=true: neutralizam os filtros LFS em maquinas sem
@@ -128,6 +131,35 @@ class Report:
         self.lines.append(f"[{self.name}] {msg}")
 
 
+def parse_skip_paths(raw: str) -> list[str]:
+    """`skip_paths: .dashproject/, .loop/` → `['.dashproject', '.loop']` (ADR-011).
+
+    CSV numa linha porque o marcador e um subset YAML plano — lista com `- ` exigiria
+    outro parser, e o arquivo continua YAML valido do jeito que esta.
+
+    Fail-closed em caminho absoluto ou com `..`: pathspec para fora do repo faz o
+    `git add` inteiro falhar, e o ciclo pararia de commitar aquele repo **em
+    silencio** — o modo de falha que o marcador nao pode ter."""
+    out: list[str] = []
+    for item in raw.split(","):
+        entry = item.strip()
+        if not entry:
+            continue
+        if entry.startswith("/") or ".." in Path(entry).parts:
+            raise ValueError(f"{MARKER}: skip_paths nao aceita {entry!r} "
+                             "(so caminho relativo dentro do repo)")
+        trimmed = entry.strip("/")
+        if trimmed:
+            out.append(trimmed)
+    return out
+
+
+def is_skipped(path: str, skips: list[str]) -> bool:
+    """True se `path` esta sob algum caminho ignorado. Compara por segmento: `.loop`
+    nao casa `.loopback/x` — prefixo cru casaria."""
+    return any(path == s or path.startswith(s + "/") for s in skips)
+
+
 def parse_marker(path: Path) -> dict:
     """Parser do subset YAML do marcador: linhas `chave: valor` planas, comentarios
     com # e vazias. Fail-closed: chave desconhecida ou valor de tipo errado e erro
@@ -154,6 +186,7 @@ def parse_marker(path: Path) -> dict:
             cfg[key] = int(value)
         else:  # str | None
             cfg[key] = None if value.lower() in ("null", "~", "none", "") else value
+    cfg["skip_paths"] = parse_skip_paths(str(cfg["skip_paths"] or ""))
     return cfg
 
 
@@ -415,10 +448,15 @@ def cycle(repo: Path, args: argparse.Namespace, state: dict) -> Report:
         rep.add(f"no-op: {blocked}")
         return rep
 
-    paths = dirty_paths(repo)
+    skips = list(cfg["skip_paths"])
+    paths = [p for p in dirty_paths(repo) if not is_skipped(p, skips)]
     st["last_checked"] = int(time.time())
     if not paths:
-        return rep  # arvore limpa: no-op silencioso (SPEC §1.3)
+        # Arvore limpa — ou suja **so** onde o marcador diz que o dono e outro
+        # (ADR-011): no-op silencioso dos dois jeitos. Silencioso e o ponto: um
+        # `.dashproject/pending` reescrito pelo hook a cada commit renderia uma
+        # linha de log a cada ciclo de cron, para sempre.
+        return rep
 
     if quiet_violated(repo, paths, int(cfg["quiet_window_min"])):
         rep.add(f"adiado: modificacao ha menos de {cfg['quiet_window_min']} min "
@@ -432,7 +470,16 @@ def cycle(repo: Path, args: argparse.Namespace, state: dict) -> Report:
     cfg_extra = LFS_BYPASS_CFG if cfg["lfs_bypass"] else []
     try:
         branch = git(repo, "symbolic-ref", "--short", "-q", "HEAD").stdout.strip()
-        git(repo, "add", "-A", cfg=cfg_extra)
+        exclude = [f":(exclude){p}" for p in skips]
+        git(repo, "add", "-A", *(["--", *exclude] if exclude else []), cfg=cfg_extra)
+        if skips:
+            # O pathspec impede a ENTRADA; isto trata o que ja estava no indice antes
+            # do ciclo — tipicamente a skill dona tendo feito `git add` e morrido
+            # antes do commit. Des-stagea so o que existe, para o pathspec sempre
+            # casar algo.
+            stray = [p for _, p in staged_files(repo, cfg_extra) if is_skipped(p, skips)]
+            if stray:
+                git(repo, "restore", "--staged", "--", *stray, cfg=cfg_extra)
 
         blocked_files = secret_sweep(repo, cfg_extra, rep)
 

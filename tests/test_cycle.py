@@ -355,6 +355,110 @@ class CycleCase(unittest.TestCase):
         staged = sh(self.repo, "git", "diff", "--cached", "--name-only").stdout
         self.assertEqual(staged.strip(), "")
 
+    # ── ADR-011: skip_paths, estado de outra skill ───────────────────────
+
+    def sujeira_de_skill(self) -> None:
+        """Reproduz o que o hook do DASHPROJECT escreve DEPOIS de cada commit — a
+        sujeira que reaparece sozinha e realimentava o ciclo."""
+        (self.repo / ".dashproject").mkdir(exist_ok=True)
+        (self.repo / ".dashproject" / "pending").write_text("pending abc123 entrega\n")
+        (self.repo / ".dashproject" / "last-commit-ts").write_text("1787404703\n")
+
+    def test_skip_paths_fica_fora_do_commit(self) -> None:
+        self.marker("skip_paths: .dashproject/\n")
+        self.write_entrega()
+        self.sujeira_de_skill()
+        got = self.run_cycle("--quiet-min", "0")
+        self.assertIn("1.2.0 - Fecha o parser do intervalo", got.stdout)
+        tocados = sh(self.repo, "git", "show", "--name-only", "--format=", "HEAD").stdout
+        self.assertIn("app.py", tocados)
+        self.assertNotIn(".dashproject", tocados, "estado de outra skill entrou no commit")
+        # E continua sujo: o ciclo nao commitou NEM descartou — so nao e dele.
+        # (porcelain colapsa diretorio inteiro nao rastreado em `?? .dashproject/`)
+        self.assertIn(".dashproject",
+                      sh(self.repo, "git", "status", "--porcelain").stdout)
+
+    def test_sem_skip_paths_o_mesmo_caminho_entra(self) -> None:
+        """Sentido contrario do anterior: sem a chave, o `add -A` leva tudo — é o
+        comportamento que produzia o loop, e ele tem de continuar mensuravel."""
+        self.marker()
+        self.write_entrega()
+        self.sujeira_de_skill()
+        self.run_cycle("--quiet-min", "0")
+        tocados = sh(self.repo, "git", "show", "--name-only", "--format=", "HEAD").stdout
+        self.assertIn(".dashproject/pending", tocados)
+
+    def test_sujeira_so_em_skip_paths_e_noop_silencioso(self) -> None:
+        """O nucleo do loop: hook escreve `pending` depois do commit, ciclo acorda,
+        acha arvore suja e commita — o que dispara o hook de novo. Aqui ele nao
+        acorda, e nao imprime nada (uma linha por ciclo de cron, para sempre)."""
+        self.marker("skip_paths: .dashproject/\n")
+        self.sujeira_de_skill()
+        before = self.commit_count()
+        got = self.run_cycle("--quiet-min", "0")
+        self.assertEqual(got.stdout.strip(), "", f"no-op deveria ser mudo: {got.stdout!r}")
+        self.assertEqual(self.commit_count(), before)
+
+    def test_skip_paths_nao_segura_a_janela_quieta(self) -> None:
+        """`pending` tem mtime de agora a cada commit. Se ele contasse na janela
+        quieta, um repo com o hook instalado ficaria adiando para sempre."""
+        self.marker("skip_paths: .dashproject/\n")
+        self.write_entrega()
+        self.sujeira_de_skill()          # mtime = agora
+        got = self.run_cycle()           # janela default de 5 min ativa
+        self.assertNotIn("janela quieta", got.stdout)
+        self.assertIn("1.2.0 - Fecha o parser do intervalo", got.stdout)
+
+    def test_skip_paths_ja_staged_e_des_stageado(self) -> None:
+        """A skill dona fez `git add` e morreu antes do commit: o pathspec sozinho
+        nao alcanca o indice, e o caminho entraria de carona."""
+        self.marker("skip_paths: .dashproject/\n")
+        self.write_entrega()
+        self.sujeira_de_skill()
+        sh(self.repo, "git", "add", ".dashproject")
+        self.run_cycle("--quiet-min", "0")
+        tocados = sh(self.repo, "git", "show", "--name-only", "--format=", "HEAD").stdout
+        self.assertNotIn(".dashproject", tocados)
+
+    def test_skip_paths_com_rename_nao_vaza_a_delecao(self) -> None:
+        """Rename dentro do caminho ignorado (`history/daily`, `.loop/entries`): o
+        indice guarda a delecao da origem E a adicao do destino, mas
+        `staged_files()` so devolve o destino. Des-stagear o que ele lista deixaria
+        a DELECAO staged — o commit apagaria arquivo de outra skill. Quem fecha
+        isso e o pathspec no `add`, nao a limpeza do indice."""
+        self.marker("skip_paths: .dashproject/\n")
+        (self.repo / ".dashproject").mkdir()
+        (self.repo / ".dashproject" / "antigo.md").write_text("relatorio do dia\n")
+        sh(self.repo, "git", "add", ".dashproject")
+        sh(self.repo, "git", "commit", "-q", "-m", "0.0.1 - Estado da outra skill")
+        (self.repo / ".dashproject" / "antigo.md").rename(
+            self.repo / ".dashproject" / "novo.md")
+        self.write_entrega()
+        self.run_cycle("--quiet-min", "0")
+        tocados = sh(self.repo, "git", "show", "--name-only", "--format=", "HEAD").stdout
+        self.assertNotIn(".dashproject", tocados)
+        self.assertTrue((self.repo / ".dashproject" / "novo.md").exists())
+
+    def test_skip_paths_casa_por_segmento(self) -> None:
+        """`.loop` nao pode pular `.loopback/` — prefixo cru pularia."""
+        self.marker("skip_paths: .loop\n")
+        self.write_entrega()
+        (self.repo / ".loopback").mkdir()
+        (self.repo / ".loopback" / "x.txt").write_text("vizinho de nome parecido\n")
+        self.run_cycle("--quiet-min", "0")
+        tocados = sh(self.repo, "git", "show", "--name-only", "--format=", "HEAD").stdout
+        self.assertIn(".loopback/x.txt", tocados)
+
+    def test_skip_paths_para_fora_do_repo_falha_fechado(self) -> None:
+        """Pathspec para fora do repo derrubaria o `git add` inteiro — o ciclo
+        pararia de commitar aquele repo em silencio."""
+        self.marker("skip_paths: ../outro\n")
+        self.write_entrega()
+        before = self.commit_count()
+        got = self.run_cycle("--quiet-min", "0")
+        self.assertIn("marcador invalido", got.stdout)
+        self.assertEqual(self.commit_count(), before)
+
     def test_diretorio_sem_git_e_reportado_sem_crash(self) -> None:
         naked = self.root / "pelado"
         naked.mkdir()

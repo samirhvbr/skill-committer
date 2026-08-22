@@ -45,6 +45,10 @@ Por repositório participante, a cada disparo:
 4. **Janela quieta** — arquivo modificado nos últimos 5 min → adia (alguém está
    trabalhando agora).
 5. **Stage** — `git add -A`; o `.gitignore` de cada repo é a primeira linha de defesa.
+   `skip_paths` no marcador tira do stage (e da conta de "sujo") o que **outra skill
+   escreve e commita** — `.dashproject/`, `.loop/`. Sem isso, o hook daquela skill
+   reescreve o estado dela depois de cada commit e o ciclo empacota, num loop que se
+   realimenta sozinho (ADR-011).
 6. **Scan de segredo** no diff staged (padrões do `redact.py` do AUDITOR). Achou →
    **exclui o arquivo, commita o resto, reporta visível** (ADR-005).
 7. **Mensagem** — `version.md` staged com entrada nova → `X.Y.Z - título da entrada`

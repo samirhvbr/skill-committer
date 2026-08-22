@@ -56,6 +56,16 @@ Piloto com F3:
   desacoplado do `version.md`) + ADR-010 (backoff e teto por repo). Criados os 16
   `version.md` que faltavam. Repos que commitam **sem modelo: 1 → 16**.
 
+- **2026-08-22 — `0.5.2`: `skip_paths` (ADR-011).** Loop achado no EOP, onde a skill
+  DASHPROJECT convive com esta: o hook `post-commit` de lá escreve
+  `.dashproject/pending` **depois de cada commit**, e aquele diretório é versionado
+  (duas estações). Toda árvore ficava suja no instante seguinte ao commit → ciclo
+  empacotava → hook sujava de novo, uma volta por disparo de cron **com a máquina
+  parada**, cada uma queimando fallback que a trava do §1.75 recusava. A chave nova
+  tira o caminho do stage, da janela quieta e da conta de árvore suja. 61 testes; a
+  mutação mostrou que o pathspec `:(exclude)` **não estava medido** até o teste de
+  rename existir — o des-stage do índice mascarava.
+
 ---
 
 ## Próximo passo

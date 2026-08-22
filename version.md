@@ -1,6 +1,6 @@
 # Versão — skill-COMMITTER
 
-**Versão atual:** `0.5.1`
+**Versão atual:** `0.5.2`
 
 > Este arquivo é a **fonte da verdade** da versão do projeto. Qualquer lugar que
 > precise exibir ou reportar a versão extrai o **primeiro número semver (`X.Y.Z`)**
@@ -66,6 +66,24 @@ COMMITTER usar a versão atual no fallback sem inventar número (ADR-002).
 ## 3. Changelog
 
 > Ordem decrescente (mais recente no topo).
+
+### `0.5.2` — 2026-08-22 — O ciclo para de empacotar estado de outra skill (skip_paths)
+
+Loop real achado no EOP: o hook `post-commit` do DASHPROJECT escreve
+`.dashproject/pending` e `last-commit-ts` **depois de cada commit**, e lá aquele
+diretório é versionado (duas estações). Todo commit deixava a árvore suja no
+instante seguinte; o ciclo acordava, empacotava aquilo, e o hook sujava de novo —
+uma volta por disparo de cron, com a máquina parada. Sem entrada de changelog, cada
+volta caía no fallback e morria na trava do §1.75 (versão reutilizada), que não gera
+backoff: cota de 6/dia queimada sem produzir commit.
+
+`skip_paths` (CSV no marcador) resolve em três pontos: sujeira sob esses caminhos
+não acorda o ciclo nem segura a janela quieta (§1.3/§1.4, no-op segue mudo);
+`add -A -- ':(exclude)…'` impede a entrada no índice (§1.5); e o que já estava
+staged é des-stageado. Os dois últimos não são redundantes — só o pathspec fecha o
+**rename** dentro do caminho, onde `staged_files()` devolve o destino e a deleção da
+origem vazaria para o commit. Achado pela verificação por mutação, que aprovava o
+pathspec desligado até esse teste existir. ADR-011. Suíte: 61 testes, 0 falhas.
 
 ### `0.5.1` — 2026-08-01 — Trava de versão reutilizada (SPEC §1.75)
 

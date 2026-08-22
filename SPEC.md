@@ -33,15 +33,29 @@ Qualquer um destes → **no-op com aviso**, nunca tentativa de resolver:
 `git status --porcelain` vazio → **no-op silencioso**: sem relatório, sem estado além
 de `last_checked`. (Mesma regra de quiescência do AUDITOR.)
 
+Sujo **só** sob `skip_paths` (§2) conta como limpo — e o no-op continua mudo. Um
+`.dashproject/pending` que o hook da outra skill reescreve a cada commit renderia
+uma linha no `cron.log` a cada disparo, para sempre (ADR-011).
+
 ### 1.4 Janela quieta
 Algum arquivo da árvore modificado (mtime) nos últimos `quiet_window_min` (default
 **5**) → **adia** para o próximo disparo. Protege sessão trabalhando agora — inclusive
 sessões paralelas de outros agentes no mesmo repo.
 
+Arquivo sob `skip_paths` não segura a janela: `pending` tem mtime de agora depois de
+**todo** commit, e um repo com aquele hook instalado ficaria adiando para sempre.
+
 ### 1.5 Stage
 `git add -A`. O `.gitignore` do repo é a primeira linha de defesa (`.env`, `tmp/`…);
 o COMMITTER não julga lixo — se lixo entra, o defeito é do `.gitignore` do repo, e o
 achado é do AUDITOR.
+
+Com `skip_paths`, o comando vira `git add -A -- ':(exclude)<path>'…` e o que já
+estava no índice sob esses caminhos é des-stageado. São dois pontos porque cobrem
+coisas diferentes: o pathspec impede a **entrada** — inclusive a deleção de origem de
+um **rename** dentro do caminho, que a limpeza do índice não alcança; a limpeza cobre
+o índice **pré-existente**, tipicamente a skill dona tendo feito `git add` e morrido
+antes do commit (ADR-011).
 
 ### 1.6 Scan de segredo
 Padrões vendorizados do `redact.py` do AUDITOR (AWS, tokens de provedor, JWT, PEM,
@@ -139,7 +153,20 @@ credential_bridge: auto  # auto = ponte gh só quando o remote é http(s) | gh |
 lfs_bypass: false        # true onde os filtros LFS existem sem git-lfs (caso matomo)
 fallback: sonnet         # modelo do fallback; "off" = só caminho determinístico
 changelog_file: null     # null = tenta CHANGELOG.md → docs/VERSION.md → version.md
+skip_paths: null         # CSV de caminhos que o ciclo não stagea (ADR-011)
 ```
+
+`skip_paths` é lista em **CSV numa linha** — `skip_paths: .dashproject/, .loop/` —
+porque o marcador é um subset YAML plano; lista com `- ` exigiria outro parser e o
+arquivo continua YAML válido assim. Casa por **segmento**: `.loop` não pula
+`.loopback/`. Caminho absoluto ou com `..` = **marcador inválido** (pathspec para
+fora do repo derrubaria o `add` e o repo pararia de ser commitado em silêncio).
+
+Serve para caminho que **outra skill escreve e commita**: `.dashproject/` (o
+auditor DASHPROJECT fecha o próprio snapshot com `chore(dashproject)`), `.loop/`.
+Sem isso, o hook `post-commit` daquela skill reescreve o estado dela depois de cada
+commit, o ciclo empacota esse estado, o hook reescreve de novo — loop perpétuo, e
+cada volta queimando uma invocação de fallback (ADR-011).
 
 Chave desconhecida ou tipo errado = **marcador inválido = nada feito** (fail-closed:
 um typo em `enabled` não pode virar silêncio).

@@ -210,6 +210,46 @@ ADR. Decisão nova entra aqui, com data e status, no mesmo commit da mudança.
 
 ---
 
+## ADR-011 — O ciclo não é dono de estado de outra skill: `skip_paths` no marcador
+
+- **Data:** 2026-08-22 · **Status:** Aceito
+- **Contexto (loop real, achado no EOP):** o DASHPROJECT instala um hook
+  `post-commit` que escreve `.dashproject/pending` e `.dashproject/last-commit-ts`
+  **depois de cada commit**, e no EOP esse diretório é versionado por decisão do
+  Samir (ADR-086 de lá: "tudo se versiona, exceto segredo"). O efeito é que **todo
+  commit deixa a árvore suja no instante seguinte**, sem ninguém trabalhar. O ciclo
+  acorda, vê sujeira, `add -A`, commita — e o hook reescreve os dois arquivos, o que
+  suja de novo. Uma volta por ciclo de cron, para sempre, com a máquina parada.
+  Pior: como não há entrada de changelog nova, cada volta cai no **fallback**, cuja
+  mensagem sai com a versão corrente e é **recusada pela trava do §1.75** (versão
+  reutilizada) — que não gera backoff, porque o modelo não errou o diff. Cota de
+  6/dia por repo queimada em algumas horas, zero commits produzidos.
+- **Decisão:** chave `skip_paths` no marcador — CSV de caminhos que o ciclo **não
+  stagea**. Aplicada em três pontos:
+  1. **§1.3/§1.4** — sujeira sob esses caminhos não conta como árvore suja (nem para
+     acordar o ciclo, nem para segurar a janela quieta) e o no-op segue **mudo**;
+     uma linha por ciclo sobre `pending` seria ruído perpétuo no `cron.log`.
+  2. **§1.5** — `git add -A -- ':(exclude)<path>'`: não entra no índice. É o
+     pathspec, não a limpeza do índice, que fecha o **rename** dentro do caminho
+     ignorado — `staged_files()` devolve o destino e não a origem, e a deleção
+     vazaria para o commit.
+  3. **Índice pré-existente** — o que já estava staged antes do ciclo (a skill dona
+     fez `git add` e morreu antes do commit) é des-stageado.
+- **Alternativas descartadas:** (a) *tirar `.dashproject/` do git* — resolveria o
+  loop, mas o Samir mantém o versionamento porque o EOP roda em **duas estações** e
+  o estado de medição precisa atravessar; (b) *só o auto-commit do DASHPROJECT* —
+  fecha a árvore depois da revisão, mas deixa aberta a janela do debounce (10 min) e
+  qualquer falha da outra skill reabre o loop. `skip_paths` é a única camada que não
+  depende de a outra skill ter rodado com sucesso.
+- **Consequência:** o marcador continua só **restringindo** (ADR-004) — não existe
+  valor de `skip_paths` que faça o ciclo commitar mais. Quem escreve o caminho passa
+  a ser o único dono dele: se o DASHPROJECT não commitar o próprio snapshot, ele
+  fica sujo indefinidamente, e isso é visível no `git status` — não silencioso.
+  Caminho absoluto ou com `..` é **marcador inválido**: pathspec para fora do repo
+  derrubaria o `add` inteiro e o repo pararia de ser commitado sem uma linha de log.
+
+---
+
 ## Decisões pendentes
 
 | # | Pendência | Bloqueia | Fase |
