@@ -60,8 +60,16 @@ antes do commit (ADR-011).
 ### 1.6 Scan de segredo
 Padrões vendorizados do `redact.py` do AUDITOR (AWS, tokens de provedor, JWT, PEM,
 credencial em URL, `VAR_SECRET=…`) rodando sobre `git diff --cached`. Encontrou →
-**des-stagea o(s) arquivo(s) ofensor(es), commita o resto, reporta visível**
-(ADR-005). O COMMITTER nunca edita conteúdo — bloqueia o arquivo inteiro.
+🔴 **ABORTA a árvore inteira** (ADR-012, supera o ADR-005): nada é commitado, o stage é
+desfeito, a árvore fica como estava, e o relatório nomeia **arquivo e regra**.
+
+**Por que não "commita o resto", que era o ADR-005:** commit parcial por decisão de scanner
+publica **meia entrega** sem nada acusar. Medido no SHVIA-WEB 2.92.0 — 49 arquivos dentro, 7
+fora, entre eles a migration cujos consumidores entraram; HEAD não-deployável por 11 min.
+
+⚠️ **`.env.example` (e `.sample`/`.template`/`.dist`) NÃO conta como caminho sensível** —
+é arquivo de convenção, versionado. Sem essa exceção o abort viraria paralisia: encostar no
+template travaria todo commit do repo. A regra de **conteúdo** continua valendo neles.
 
 ### 1.7 Mensagem
 1. **Determinístico (caminho feliz, zero tokens):** um dos **arquivos de changelog**

@@ -102,7 +102,9 @@ os commits daqui seguem o fluxo manual da casa.)
    (ADR-003).
 4. Opt-in **por marcador** `.committer.yml` no repo participante; marcador só
    restringe, nunca amplia (ADR-004).
-5. Segredo no staged → **exclui o arquivo, commita o resto, reporta** (ADR-005).
+5. Segredo no staged → **ABORTA a árvore inteira**, nomeando arquivo e regra (ADR-012,
+   supera o ADR-005). `.env.example` e afins não contam como caminho sensível — senão o
+   abort viraria paralisia.
 6. Push da **branch atual**, nunca force/amend/rebase; falha de push não é fatal e
    nunca escala (ADR-006).
 7. Agrupamento por assunto = **v2**, com modelo (ADR-007).

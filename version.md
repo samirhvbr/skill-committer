@@ -1,6 +1,6 @@
 # Versão — skill-COMMITTER
 
-**Versão atual:** `0.5.2`
+**Versão atual:** `0.6.0`
 
 > Este arquivo é a **fonte da verdade** da versão do projeto. Qualquer lugar que
 > precise exibir ou reportar a versão extrai o **primeiro número semver (`X.Y.Z`)**
@@ -66,6 +66,62 @@ COMMITTER usar a versão atual no fallback sem inventar número (ADR-002).
 ## 3. Changelog
 
 > Ordem decrescente (mais recente no topo).
+
+### `0.6.0` — 2026-08-27 — Segredo no staged ABORTA a árvore, e o `.env.example` sai da regra de caminho
+
+Bump de **`Y`**: ADR-012 aceito, superando o ADR-005 — muda a direção.
+
+**O que o ADR-005 produziu em produção.** Medido rodando o `secret_scan.py` desta skill
+contra o diff real da 2.92.0 do SHVIA-WEB (`d823771`): o commit levou **49 arquivos e
+deixou 7**, entre eles a migration `create_managed_provider_keys_table` **cujos consumidores
+entraram** — HEAD não-deployável até o complemento manual 11 min depois. Os seis arquivos de
+conteúdo acusam, e **os cinco de código são falso-positivo, todos pela mesma razão: a
+entrega ERA sobre credenciais**. Casaram um comentário citando a constante de chaves
+sensíveis de um redator de log, uma chave de objeto JS chamada `password` e fixtures de
+teste. O scanner não separa "código que lida com segredo" de "um segredo" — **quanto mais a
+entrega for sobre credencial, mais completa é a amputação**.
+
+⚠️ **E o caso barulhento é o menos grave.** Migration derrubada quebra o CI e alguém vê
+(e viu: vermelho em 2m31s). Os silenciosos não — **teste** derrubado deixa a suíte verde com
+menos cobertura, **doc** derrubada viola a regra de doc-no-mesmo-commit sem acender nada.
+
+**As duas mudanças, que andam juntas**
+1. **Aborta a árvore inteira.** Nada é commitado, o stage é desfeito. Commit parcial por
+   decisão de scanner é o defeito: não existe caso em que amputar metade de uma entrega
+   seja melhor que não commitar. O relatório nomeia **arquivo e regra** — "abortei" sem
+   isso devolve o problema ao humano sem a informação para resolvê-lo.
+2. **`.env.example` (e `.sample`/`.template`/`.dist`) sai da regra de CAMINHO.** Sem isso a
+   mudança (1) trocaria amputação silenciosa por **paralisia frequente**: `\.env\..*$` casa
+   `.env.example`, que é versionado por convenção (medido: 2 repos da casa o têm) e citado
+   nominalmente na doc de agente. Eles **continuam sujeitos à regra de conteúdo**, que é a
+   que pegaria uma chave real colada ali por engano — e há teste para os dois sentidos.
+
+**Em observação, não resolvido preventivamente:** os cinco falso-positivos de
+`assigned-secret` vão continuar disparando, e agora viram **trava** em vez de amputação. Se
+acontecer duas vezes, a regra de conteúdo precisa de contexto (extensão, se está sob
+`tests/`). Regra de segurança com exceção especulativa é como se perde a regra.
+
+**Testes — 63** (dois novos para o `.env.example`, nos dois sentidos). Verificado por
+**mutação**: voltar o "commita o resto" derruba **4**; voltar o `.env.example` à regra de
+caminho derruba **1**. ⚠️ Os três testes que travavam o comportamento antigo foram
+**reescritos** — o `test_segredo_plantado_fica_fora_e_o_resto_entra` exigia exatamente o
+defeito.
+
+**Achado do dogfood, e a lição que ele carrega.** Rodando o scan desta entrega contra ela
+mesma, o `tests/test_cycle.py` acusou `assigned-secret` — porque o teste novo escrevia a
+atribuição da chave **literal** no fonte. Sob o ADR-005 isso derrubaria só o arquivo de
+teste e commitaria o resto: **a entrega que conserta o scanner entraria sem os testes que a
+provam**. Sob o ADR-012, trava tudo e um humano decide.
+
+A correção não foi afrouxar a regra: foi seguir a convenção que este arquivo **já usava** —
+montar segredo de fixture por **concatenação**, com o comentário dizendo que é de propósito.
+É a mesma solução do falso positivo de 29/07 (`tokens = out.split(...)`), e é o que mantém
+a regra de conteúdo válida dentro de `tests/` sem precisar de exceção por diretório.
+
+_Gatilhos:_ ADR aceito que muda a direção (Y), política de segurança alterada, testes que
+definem comportamento esperado.
+
+---
 
 ### `0.5.2` — 2026-08-22 — O ciclo para de empacotar estado de outra skill (skip_paths)
 

@@ -8,7 +8,9 @@ Decisoes em docs/decisoes.md (ADR-001 a ADR-008). Resumo do contrato:
 - Mensagem vem do changelog do `version.md` staged (deterministico, zero tokens);
   sem entrada com titulo → o caso e do fallback Sonnet (F3, ainda nao implementado):
   este script REPORTA e desfaz o stage, nunca inventa mensagem (ADR-002).
-- Segredo no staged → exclui o(s) arquivo(s), commita o resto, reporta (ADR-005).
+- Segredo no staged → ABORTA a arvore inteira, nomeando arquivo e regra (ADR-012,
+  supera o ADR-005). `.env.example` e afins nao contam como caminho sensivel — senao
+  o abort viraria paralisia; eles seguem sujeitos a regra de CONTEUDO.
 - `skip_paths` no marcador → o caminho nem e staged: estado de outra skill tem dono,
   e nao e este ciclo (ADR-011).
 - Push da branch atual, nunca force; falha nao e fatal, 3 seguidas param (ADR-006).
@@ -288,8 +290,16 @@ def is_binary_staged(repo: Path, path: str, cfg_extra: list[str]) -> bool:
 
 
 def secret_sweep(repo: Path, cfg_extra: list[str], rep: Report) -> list[str]:
-    """Estagio 1.6: retorna os arquivos EXCLUIDOS do stage por suspeita de segredo.
-    ADR-005: exclui o arquivo inteiro, nunca edita conteudo."""
+    """Estagio 1.6: retorna os arquivos suspeitos de segredo.
+
+    ADR-012 (supera o ADR-005): achou um, a arvore INTEIRA fica para tras. Antes o
+    arquivo era des-stageado e o resto commitava — e isso publicava **meia entrega**
+    sem nada acusar. Medido no SHVIA-WEB 2.92.0: dos 49 arquivos, 7 ficaram fora, e
+    entre eles a migration cujos consumidores entraram. HEAD nao-deployavel.
+
+    O relatorio nomeia ARQUIVO e REGRA porque "abortei" sem isso devolve o problema
+    ao humano sem a informacao para resolve-lo.
+    """
     offenders: list[str] = []
     for status, path in staged_files(repo, cfg_extra):
         if status == "D":
@@ -301,10 +311,7 @@ def secret_sweep(repo: Path, cfg_extra: list[str], rep: Report) -> list[str]:
             reasons.extend(scan_text(added_lines(repo, path, cfg_extra)))
         if reasons:
             offenders.append(path)
-            rep.add(f"SEGREDO SUSPEITO em {path} ({', '.join(reasons)}) — "
-                    "arquivo EXCLUIDO deste commit; trate e ele entra no proximo")
-    if offenders:
-        git(repo, "restore", "--staged", "--", *offenders, cfg=cfg_extra)
+            rep.add(f"SEGREDO SUSPEITO em {path} ({', '.join(reasons)})")
     return offenders
 
 
@@ -481,10 +488,20 @@ def cycle(repo: Path, args: argparse.Namespace, state: dict) -> Report:
             if stray:
                 git(repo, "restore", "--staged", "--", *stray, cfg=cfg_extra)
 
+        # ADR-012: suspeita de segredo ABORTA a arvore inteira. Nunca "commita o
+        # resto" — commit parcial por decisao de scanner publica meia entrega, e
+        # migration separada do consumidor deixa HEAD nao-deployavel.
         blocked_files = secret_sweep(repo, cfg_extra, rep)
+        if blocked_files:
+            rep.add(f"ABORTADO: {len(blocked_files)} arquivo(s) com suspeita de segredo. "
+                    "NADA foi commitado — a arvore fica intocada, do jeito que estava. "
+                    "Trate o(s) arquivo(s) acima (ou, se for falso positivo, commite a "
+                    "mao) e o ciclo seguinte leva a entrega inteira.")
+            git(repo, "reset", "-q")
+            return rep
 
         if not staged_files(repo, cfg_extra):
-            rep.add("nada a commitar" + (" (so havia arquivos bloqueados)" if blocked_files else ""))
+            rep.add("nada a commitar")
             git(repo, "reset", "-q")
             return rep
 

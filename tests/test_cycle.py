@@ -258,31 +258,88 @@ class CycleCase(unittest.TestCase):
         self.assertIn("nao tem version.md", got.stdout)
         self.assertEqual(self.commit_count(), before)
 
-    # ── ADR-005 / T-01: segredo → exclui o arquivo, commita o resto ──────
+    # ── ADR-012 / T-01: segredo → ABORTA a arvore inteira ────────────────
 
-    def test_segredo_plantado_fica_fora_e_o_resto_entra(self) -> None:
+    def test_segredo_plantado_ABORTA_a_entrega_inteira(self) -> None:
+        """ADR-012. O teste anterior exigia o oposto — que o resto entrasse — e era
+        exatamente o defeito: meia entrega publicada sem nada acusar."""
         self.marker()
         self.write_entrega("1.4.0", "Entrega limpa")
         vazado = "AKIA" + "Q" * 16  # montado por concatenacao de proposito
         (self.repo / "config_novo.py").write_text(f'aws = "{vazado}"\n')
+        (self.repo / "companheiro.py").write_text("x = 1\n")
         self.age("config_novo.py")
-        got = self.run_cycle("--quiet-min", "0")
-        self.assertIn("SEGREDO SUSPEITO", got.stdout)
-        self.assertEqual(self.head_subject(), "1.4.0 - Entrega limpa")
-        committed = sh(self.repo, "git", "show", "--name-only", "--format=", "HEAD").stdout
-        self.assertNotIn("config_novo.py", committed, "o ofensor entrou no commit!")
-        status = sh(self.repo, "git", "status", "--porcelain").stdout
-        self.assertIn("config_novo.py", status, "o ofensor deveria seguir na arvore")
+        self.age("companheiro.py")
+        before = self.commit_count()
 
-    def test_caminho_sensivel_fica_fora_mesmo_sem_conteudo_suspeito(self) -> None:
+        got = self.run_cycle("--quiet-min", "0")
+
+        # Nomeia ARQUIVO e REGRA: "abortei" sem isso devolve o problema sem a
+        # informacao para resolve-lo.
+        self.assertIn("SEGREDO SUSPEITO", got.stdout)
+        self.assertIn("config_novo.py", got.stdout)
+        self.assertIn("aws-access-key", got.stdout)
+        self.assertIn("ABORTADO", got.stdout)
+
+        # NADA commitado — nem o companheiro inocente, nem a entrega.
+        self.assertEqual(self.commit_count(), before, "commitou apesar do segredo")
+        status = sh(self.repo, "git", "status", "--porcelain").stdout
+        self.assertIn("config_novo.py", status, "a arvore deveria seguir intocada")
+        self.assertIn("companheiro.py", status, "o companheiro nao pode ter sido levado")
+
+    def test_caminho_sensivel_aborta_mesmo_sem_conteudo_suspeito(self) -> None:
         self.marker()
         self.write_entrega("1.5.0", "Outra entrega")
         (self.repo / "deploy_key.pem").write_text("nem parece chave\n")
         self.age("deploy_key.pem")
+        before = self.commit_count()
+
         got = self.run_cycle("--quiet-min", "0")
+
         self.assertIn("caminho sensivel", got.stdout)
+        self.assertIn("ABORTADO", got.stdout)
+        self.assertEqual(self.commit_count(), before)
+
+    def test_env_example_NAO_e_caminho_sensivel(self) -> None:
+        """ADR-012, a metade que impede a paralisia.
+
+        `\\.env\\..*$` casa `.env.example`, que e versionado por convencao em
+        metade da casa. Com o abort, deixa-lo na regra de caminho travaria todo
+        commit de quem encostasse no template. A regra de CONTEUDO segue valendo —
+        e o proximo teste prova."""
+        self.marker()
+        self.write_entrega("1.6.0", "Mexe no template de env")
+        (self.repo / ".env.example").write_text("APP_NAME=\nDB_HOST=\n")
+        self.age(".env.example")
+
+        got = self.run_cycle("--quiet-min", "0")
+
+        self.assertNotIn("SEGREDO SUSPEITO", got.stdout)
+        self.assertNotIn("ABORTADO", got.stdout)
+        self.assertEqual(self.head_subject(), "1.6.0 - Mexe no template de env")
         committed = sh(self.repo, "git", "show", "--name-only", "--format=", "HEAD").stdout
-        self.assertNotIn("deploy_key.pem", committed)
+        self.assertIn(".env.example", committed)
+
+    def test_env_example_COM_segredo_de_verdade_ainda_aborta(self) -> None:
+        """A regra de conteudo e a que importa num template: o dia em que alguem
+        colar a chave real ali, o caminho ter saido da lista nao pode salvar."""
+        self.marker()
+        self.write_entrega("1.7.0", "Template com chave colada por engano")
+        vazado = "AKIA" + "Z" * 16
+        # Chave e atribuicao montadas por CONCATENACAO, como o resto deste arquivo:
+        # escrita literal, a linha faria o scan acusar o proprio arquivo de teste — e
+        # com o ADR-012 isso nao amputaria o teste, travaria a entrega inteira.
+        linha = "AWS_ACCESS" + "_KEY_ID" + "=" + vazado
+        (self.repo / ".env.example").write_text(f"APP_NAME=\n{linha}\n")
+        self.age(".env.example")
+        before = self.commit_count()
+
+        got = self.run_cycle("--quiet-min", "0")
+
+        self.assertIn("SEGREDO SUSPEITO", got.stdout)
+        self.assertIn(".env.example", got.stdout)
+        self.assertIn("ABORTADO", got.stdout)
+        self.assertEqual(self.commit_count(), before)
 
     def test_codigo_de_parser_nao_e_falso_positivo(self) -> None:
         """Regressao do dogfood de 29/07: `tokens = out.split(...)` marcava o
@@ -305,7 +362,7 @@ class CycleCase(unittest.TestCase):
         self.age("token.txt")
         before = self.commit_count()
         got = self.run_cycle("--quiet-min", "0")
-        self.assertIn("so havia arquivos bloqueados", got.stdout)
+        self.assertIn("ABORTADO", got.stdout)
         self.assertEqual(self.commit_count(), before)
 
     # ── ADR-006: push nao-fatal ──────────────────────────────────────────

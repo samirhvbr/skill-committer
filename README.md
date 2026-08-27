@@ -50,7 +50,9 @@ Por repositório participante, a cada disparo:
    reescreve o estado dela depois de cada commit e o ciclo empacota, num loop que se
    realimenta sozinho (ADR-011).
 6. **Scan de segredo** no diff staged (padrões do `redact.py` do AUDITOR). Achou →
-   **exclui o arquivo, commita o resto, reporta visível** (ADR-005).
+   **aborta a árvore inteira**, nomeando arquivo e regra (ADR-012). Nada é commitado —
+   commit parcial por decisão de scanner publica meia entrega. `.env.example` e afins
+   ficam fora da regra de *caminho* (seguem sujeitos à de *conteúdo*).
 7. **Mensagem** — `version.md` staged com entrada nova → `X.Y.Z - título da entrada`
    (determinístico, zero tokens). Senão → **fallback** (`fallback.py`): o modelo
    recebe VERSION+STAT+DIFF sem tools e devolve uma linha honesta ou `ABORT`; a

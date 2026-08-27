@@ -90,7 +90,13 @@ ADR. Decisão nova entra aqui, com data e status, no mesmo commit da mudança.
 
 ## ADR-005 — Segredo no staged: exclui o arquivo, commita o resto, reporta
 
-- **Data:** 2026-07-29 · **Status:** Aceito (decidido pelo Samir entre duas opções)
+> ⛔ **SUPERADO pelo [ADR-012](#adr-012--segredo-no-staged-aborta-a-árvore-inteira) em
+> 2026-08-27.** A alternativa que este ADR descartou — abortar o repo inteiro — é a que
+> vale hoje, e o motivo alegado para descartá-la (*"um arquivo esquecido seguraria todo o
+> resto"*) foi resolvido tirando `.env.example` da regra de caminho, não commitando pela
+> metade. Mantido na íntegra: a decisão de 27/08 só faz sentido contra o que se pensava aqui.
+
+- **Data:** 2026-07-29 · **Status:** ~~Aceito~~ **Superado** (ADR-012)
 - **Contexto:** `git add -A` autônomo captura arquivo novo com chave que o
   `.gitignore` não conhece; push publica; histórico é permanente.
 - **Decisão:** scan mecânico do `git diff --cached` (padrões vendorizados do
@@ -266,3 +272,60 @@ deve é o **bloco PS** nos `CLAUDE.md`/`AGENTS.md`, que é o que muda o hábito 
 agentes · **P-04** — teto diário **global de 24** invocações do fallback,
 `COMMITTER_FALLBACK_DAILY_CAP` ajusta, `0` = kill-switch; contador no `state.json`,
 estourou = indisponível (o repo espera, nunca degrada para mensagem inventada).
+
+---
+
+## ADR-012 — Segredo no staged: **aborta a árvore inteira**
+
+- **Data:** 2026-08-27 · **Status:** Aceito (decidido pelo Samir) · **Supera:** ADR-005
+
+### Contexto — o que o ADR-005 produziu em produção
+
+Medido no SHVIA-WEB em 27/08/2026, rodando o `secret_scan.py` **desta skill** contra o
+diff real da entrega 2.92.0 (`d823771`):
+
+- O commit levou **49 arquivos e deixou 7**. Entre os que ficaram, a migration
+  `create_managed_provider_keys_table` — **cujos consumidores entraram** (o model e a tela
+  `/gestao`). HEAD ficou **não-deployável** até o complemento manual `c1a67dd`, 11 min
+  depois. O CI pegou (vermelho em 2m31s), então o alarme existiu.
+- Os **seis** arquivos de conteúdo acusam: `.env.example` por caminho sensível, e cinco por
+  `assigned-secret`.
+- 🔴 **Os cinco são falso-positivo, e todos pela mesma razão: a entrega ERA sobre
+  credenciais.** Casaram um comentário citando a constante de chaves sensíveis de um
+  redator de log, uma chave de objeto JS chamada `password` e fixtures de teste. O scanner
+  não separa *"código que lida com segredo"* de *"um segredo"* — então **quanto mais a
+  entrega for sobre credencial, mais completa é a amputação**.
+
+**E o caso barulhento é o menos grave.** Migration derrubada quebra o CI e alguém vê. Os
+silenciosos não: **teste** derrubado deixa a suíte verde com menos cobertura, e **doc**
+derrubada viola a regra de doc-no-mesmo-commit sem acender nada.
+
+### Decisão — e são DUAS mudanças, não uma
+
+1. **Achou suspeita → aborta a árvore inteira.** Nada é commitado, o stage é desfeito, a
+   árvore fica como estava. Commit parcial por decisão de scanner é o defeito: não existe
+   caso em que amputar metade de uma entrega seja melhor que não commitar.
+2. **`.env.example` (e `.sample`/`.template`/`.dist`) sai da regra de CAMINHO.** O padrão
+   `\.env\..*$` casa `.env.example`, que é versionado **por convenção** e citado
+   nominalmente na doc de agente dos repos. Ele **continua sujeito à regra de conteúdo** —
+   que é justamente a que pegaria uma chave real colada ali por engano.
+
+⚠️ **As duas andam juntas, e a (2) não é detalhe.** Sem ela, a (1) troca amputação
+silenciosa por **paralisia frequente**: encostar no template de env travaria todo commit
+do repo. Com as duas, o COMMITTER aborta só quando há motivo.
+
+3. **O abort nomeia ARQUIVO e REGRA.** *"Abortei e esperei"* sem isso devolve o problema ao
+   humano sem a informação para resolvê-lo.
+
+### O que fica em observação, e não foi resolvido preventivamente
+
+Os cinco falso-positivos de `assigned-secret` **vão continuar disparando** — e agora viram
+trava, não amputação. Se acontecer duas vezes, a regra de conteúdo precisa de contexto
+(extensão do arquivo, se está sob `tests/`). **Não foi inventado agora**: regra de
+segurança com exceção especulativa é como se perde a regra.
+
+### Verificação por mutação
+
+- Voltar o *"commita o resto"* → **4 testes vermelhos**.
+- Voltar `.env.example` à regra de caminho → **1 teste vermelho**.
+- Suíte: **63 testes, 0 falhas**.

@@ -79,10 +79,31 @@ _SENSITIVE_PATHS = re.compile(
     """
 )
 
+# ADR-012 — templates de .env que a convencao manda COMMITAR.
+#
+# `\.env\..*$` casa `.env.example`, que e arquivo versionado por convencao em
+# metade da casa e citado nominalmente na doc de agente dos repos (o preflight do
+# deploy do SHVIA-WEB depende dele). Enquanto o segredo so EXCLUIA o arquivo, isso
+# era um falso positivo caro; com o ADR-012 (segredo ABORTA a arvore) ele viraria
+# **paralisia**: encostar no template travaria todo commit do repo.
+#
+# ⚠️ Eles saem so da regra de CAMINHO. A regra de CONTEUDO continua valendo — que e
+# justamente a que pegaria um segredo de verdade colado por engano num template.
+_TEMPLATE_PATHS = re.compile(
+    r"""(?ix)
+    (?:^|/)
+    \.env\.(?: example | sample | template | dist )
+    $
+    """
+)
+
 
 def is_sensitive_path(path: str) -> bool:
     """True quando o caminho, por si so, ja justifica excluir o arquivo do stage."""
-    return bool(_SENSITIVE_PATHS.search((path or "").replace("\\", "/")))
+    path = (path or "").replace("\\", "/")
+    if _TEMPLATE_PATHS.search(path):
+        return False
+    return bool(_SENSITIVE_PATHS.search(path))
 
 
 def scan_text(text: str) -> list[str]:

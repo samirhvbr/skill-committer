@@ -23,8 +23,11 @@ permanente; apagar depois não resolve.
 - [x] Scan mecânico do `git diff --cached` antes do commit, com os padrões
       vendorizados do `redact.py` do AUDITOR (AWS, tokens de provedor, JWT, PEM,
       credencial em URL, `VAR_SECRET=…`).
-- [x] Achou → **exclui o arquivo do stage, commita o resto, reporta visível**
-      (ADR-005). O COMMITTER nunca edita conteúdo.
+- [x] Achou → **ABORTA a árvore inteira**, nomeando arquivo e regra (ADR-012, supera o
+      ADR-005). Nada é commitado; a árvore fica intocada. O COMMITTER nunca edita conteúdo.
+- [x] `.env.example`/`.sample`/`.template`/`.dist` fora da regra de **caminho** — são
+      versionados por convenção, e com o abort mantê-los ali viraria paralisia. Seguem
+      sujeitos à regra de **conteúdo**, que é a que pega chave real colada num template.
 - [x] `.gitignore` de cada repo como primeira linha de defesa; o scan é a segunda.
 - [ ] Teste com fixture de segredo plantado em arquivo novo — e o teste falha com o
       scan desligado.
