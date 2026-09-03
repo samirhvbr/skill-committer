@@ -1,6 +1,6 @@
 # Versão — skill-COMMITTER
 
-**Versão atual:** `0.7.6`
+**Versão atual:** `0.7.7`
 
 > Este arquivo é a **fonte da verdade** da versão do projeto. Qualquer lugar que
 > precise exibir ou reportar a versão extrai o **primeiro número semver (`X.Y.Z`)**
