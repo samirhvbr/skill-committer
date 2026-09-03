@@ -1,6 +1,6 @@
 # Versão — skill-COMMITTER
 
-**Versão atual:** `0.6.0`
+**Versão atual:** `0.7.0`
 
 > Este arquivo é a **fonte da verdade** da versão do projeto. Qualquer lugar que
 > precise exibir ou reportar a versão extrai o **primeiro número semver (`X.Y.Z`)**
@@ -66,6 +66,34 @@ COMMITTER usar a versão atual no fallback sem inventar número (ADR-002).
 ## 3. Changelog
 
 > Ordem decrescente (mais recente no topo).
+
+### `0.7.0` — 2026-09-02 — O ciclo passa a criar a tag e a Release da versão que o agente escreveu
+
+Medição da frota: **50 de 52 repositórios sem nenhuma Release publicada** e 47
+sem nenhuma tag, com ~2.764 versões distintas nos históricos. O GitHub não deduz
+versão de mensagem de commit — sem tag, `git diff 2.110.160..2.110.161` falha e
+um deploy ruim não tem para onde voltar.
+
+**Novo estágio §1.11**, depois de um push bem-sucedido: cria a tag (nome = a
+versão **pura**, sem `v`) e publica a Release. Chave `release: true` no marcador
+desliga com `false`.
+
+**Não fere o ADR-002.** A skill continua sem decidir versão: ela *copia* o número
+que o agente já escreveu no `version.md`. Carimbar o que existe não é bumpar.
+
+Roda depois do push, não depois do commit, porque Release aponta para commit que
+precisa existir **no remoto**. Falha aqui **não é fatal** — o
+`.github/workflows/release.yml` do repo é a segunda rede, e os dois guardam pela
+mesma pergunta ("a tag já existe?"), então a corrida é inofensiva por construção.
+
+Caminho preferido é o `tools/release.sh` do repo alvo, não uma segunda
+implementação aqui. Detalhe no [ADR-013](docs/decisoes.md).
+
+**Corrige também** a linha de status do `README.md`, que dizia *"proposta
+fechada, sem implementação"* muito depois de o ciclo estar em produção.
+
+_Verificação:_ 67 testes (4 novos), e neutralizar a chamada de `release()`
+derruba 3 deles.
 
 ### `0.6.0` — 2026-08-27 — Segredo no staged ABORTA a árvore, e o `.env.example` sai da regra de caminho
 

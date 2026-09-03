@@ -63,6 +63,7 @@ MARKER_DEFAULTS: dict[str, object] = {
     "fallback": "sonnet",
     "changelog_file": None,        # None = tenta CHANGELOG_CANDIDATES em ordem
     "skip_paths": None,            # CSV de caminhos que o ciclo nao stagea (ADR-011)
+    "release": True,               # false = nao cria tag/Release apos o push (ADR-013)
 }
 
 # -c aplicados quando lfs_bypass=true: neutralizam os filtros LFS em maquinas sem
@@ -382,6 +383,56 @@ def version_reused(repo: Path, message: str) -> str | None:
     return None
 
 
+def release(repo: Path, cfg: dict, rep: Report, dry: bool) -> None:
+    """Estagio 1.11. Roda SO depois de um push que deu certo.
+
+    Motivo de rodar aqui e nao apos o commit: uma Release aponta para um commit
+    que precisa existir NO REMOTO. Tag criada sobre commit local que nunca subiu
+    e uma promessa que o GitHub nao consegue cumprir.
+
+    A skill NAO decide versao — ela copia o numero que o agente ja escreveu no
+    `version.md` (o ADR-002 continua inteiro). Falha aqui NUNCA e fatal: o
+    workflow `release.yml` do proprio repo e a segunda rede, e os dois guardam
+    pela mesma pergunta ("a tag ja existe?"), entao quem chegar primeiro ganha.
+    """
+    if not cfg["release"]:
+        rep.add("release: off no marcador")
+        return
+    version = repo_current_version(repo)
+    if not version:
+        rep.add("release: sem semver no version.md — nada a publicar")
+        return
+    if dry:
+        rep.add(f"dry-run: publicaria a Release {version}")
+        return
+
+    script = repo / "tools" / "release.sh"
+    if script.is_file() and os.access(script, os.X_OK):
+        # Caminho preferido: a implementacao unica da casa, que tira as notas da
+        # secao do CHANGELOG. Duas copias de uma regra e como uma regra passa a
+        # ter duas versoes, uma errada.
+        r = subprocess.run([str(script), "--current", "-q"], cwd=str(repo),
+                           capture_output=True, text=True)
+    else:
+        # Sem o script no repo: o minimo que ainda entrega a Release.
+        if git(repo, "rev-parse", "--verify", "--quiet",
+               f"refs/tags/{version}").returncode == 0:
+            rep.add(f"release {version}: tag ja existe")
+            return
+        r = subprocess.run(
+            ["gh", "release", "create", version, "--title", version,
+             "--target", git(repo, "rev-parse", "HEAD").stdout.strip(),
+             "--generate-notes", "--latest"],
+            cwd=str(repo), capture_output=True, text=True)
+
+    if r.returncode == 0:
+        rep.add(f"release {version} OK")
+    else:
+        err = (r.stderr or r.stdout or "").strip().splitlines()
+        rep.add(f"release {version} FALHOU (nao fatal — o workflow pega): "
+                f"{err[-1] if err else 'sem detalhe'}")
+
+
 def push(repo: Path, branch: str, cfg: dict, cfg_extra: list[str],
          st: dict, rep: Report, dry: bool) -> None:
     """Estagio 1.9. Falha nao e fatal; 3 seguidas param de tentar (ADR-006)."""
@@ -402,11 +453,13 @@ def push(repo: Path, branch: str, cfg: dict, cfg_extra: list[str],
         extra = GH_BRIDGE_CFG + extra
     if dry:
         rep.add(f"dry-run: pusharia {branch} para {url}")
+        release(repo, cfg, rep, dry)
         return
     r = git(repo, "push", "origin", branch, cfg=extra)
     if r.returncode == 0:
         st["push_fails"] = 0
         rep.add(f"push OK ({branch})")
+        release(repo, cfg, rep, dry)
     else:
         st["push_fails"] = int(st.get("push_fails", 0)) + 1
         err = (r.stderr or "").strip().splitlines()

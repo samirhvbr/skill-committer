@@ -16,7 +16,10 @@ ficou sem commit nos repositórios participantes, monta a mensagem no padrão da
 >
 > Irmão do [AUDITOR](https://github.com/samirhvbr/AUDITOR) — mesmo padrão de
 > documentação, mesma política de scheduler, e os padrões de segredo vendorizados de
-> lá. Status: **proposta fechada, sem implementação** (fase F0 concluída).
+> lá. Status: **implementado e em operação** — F1 entregue, ciclo por cron, 67 testes.
+*(Esta linha dizia "proposta fechada, sem implementação" até 02/09/2026, muito
+depois de o ciclo estar rodando: README que envelhece em silêncio é pior que
+README ausente.)*
 
 ## Objetivo
 

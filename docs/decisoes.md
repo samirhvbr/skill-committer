@@ -329,3 +329,51 @@ segurança com exceção especulativa é como se perde a regra.
 - Voltar o *"commita o resto"* → **4 testes vermelhos**.
 - Voltar `.env.example` à regra de caminho → **1 teste vermelho**.
 - Suíte: **63 testes, 0 falhas**.
+
+---
+
+## ADR-013 — O ciclo cria a tag e a Release, e isso **não** é bumpar versão
+
+**Status:** `ACEITA` · 02/09/2026
+
+### Contexto
+
+Medição da frota em 02/09/2026: **50 de 52 repositórios sem nenhuma Release
+publicada**, 47 sem nenhuma tag, e ~2.764 versões distintas espalhadas pelos
+históricos. O GitHub nunca deduz versão de mensagem de commit — sem tag, o
+`2.110.161` é string no `git log`, o `git diff 2.110.160..2.110.161` falha e um
+deploy ruim não tem para onde voltar.
+
+O ciclo já é o último a tocar o repo antes de o trabalho virar público. Se a tag
+não sai daqui, ela depende de alguém lembrar.
+
+### Decisão
+
+Depois de um **push bem-sucedido** (§1.11), o ciclo cria a tag — nome = a versão
+**pura**, sem `v` — e publica a Release. Chave `release: true` no marcador
+(`false` desliga).
+
+**Isso não fere o [ADR-002](#adr-002)** (*"o COMMITTER nunca bumpa versão"*): a
+tag **copia** um número que o agente já escreveu no `version.md`. Decidir a
+versão continua fora do escopo; carimbar a que já existe, não.
+
+Roda depois do push, e não depois do commit, porque uma Release aponta para um
+commit que precisa existir **no remoto**.
+
+### Consequências
+
+Falha aqui **não é fatal** e não desfaz nada: o `.github/workflows/release.yml`
+do próprio repo é a segunda rede. Os dois donos guardam pela mesma pergunta —
+*"a tag já existe?"* — então quem chegar primeiro ganha e o outro vira no-op.
+Dois donos de uma regra costumam ser defeito; aqui a corrida é inofensiva **por
+construção**, e o segundo dono existe porque o marcador está `enabled: false` na
+maioria dos repos hoje — sem o workflow, quase ninguém teria Release.
+
+O caminho preferido é o `tools/release.sh` do repo alvo, não uma segunda
+implementação aqui: duas cópias de uma regra é como uma regra passa a ter duas
+versões, uma errada.
+
+### Verificação por mutação
+
+- Neutralizar a chamada de `release()` no push → **3 testes vermelhos**.
+- Suíte: **67 testes, 0 falhas**.

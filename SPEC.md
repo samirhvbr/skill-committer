@@ -128,6 +128,7 @@ SHVIA-MOBILE e dois `1.1.11` no SHVIA-DESKTOP — versão repetida quebra o
 
 ### 1.9 Push
 - **Branch atual**, e somente ela. Nunca `--force`, nunca amend, nunca rebase.
+  Push bem-sucedido encadeia a §1.11 (tag e Release).
 - `push: false` no marcador → só commita (repos onde o push é sensível).
 - Remote HTTPS → ponte `gh` (`-c credential.helper='!gh auth git-credential'`).
 - `lfs_bypass: true` → variação de push que a casa já usa em SHVIA-WEB/matomo.
@@ -146,6 +147,21 @@ SHVIA-MOBILE e dois `1.1.11` no SHVIA-DESKTOP — versão repetida quebra o
   `~/.local/state/committer/` com `state.json`, `locks/` e `cron.log`. Lock por repo
   com `O_EXCL`; stale (>30 min) é quebrado e retomado.
 
+### 1.11 Tag e Release
+- Roda **só depois de um push que deu certo**. Motivo: uma Release aponta para
+  um commit que precisa existir **no remoto** — tag sobre commit local que nunca
+  subiu é promessa que o GitHub não consegue cumprir.
+- Versão = **primeiro semver do `version.md`**. A skill **não decide** versão
+  nenhuma: copia o número que o agente já escreveu (o ADR-002 continua inteiro).
+- Tag e título = a versão **pura**, sem prefixo `v`.
+- Caminho preferido: **`tools/release.sh --current` do próprio repo** — a
+  implementação única da casa, que tira as notas da seção do `CHANGELOG.md`.
+  Sem o script, cai num `gh release create --generate-notes`.
+- `release: false` no marcador desliga.
+- **Falha nunca é fatal.** O `.github/workflows/release.yml` do repo é a segunda
+  rede, e os dois guardam pela mesma pergunta — *"a tag já existe?"* —, então
+  quem chegar primeiro ganha e o outro vira no-op. Reporta e segue.
+
 ---
 
 ## 2. `.committer.yml` (o marcador de opt-in)
@@ -162,6 +178,7 @@ lfs_bypass: false        # true onde os filtros LFS existem sem git-lfs (caso ma
 fallback: sonnet         # modelo do fallback; "off" = só caminho determinístico
 changelog_file: null     # null = tenta CHANGELOG.md → docs/VERSION.md → version.md
 skip_paths: null         # CSV de caminhos que o ciclo não stagea (ADR-011)
+release: true            # false = não cria tag/Release após o push (ADR-013)
 ```
 
 `skip_paths` é lista em **CSV numa linha** — `skip_paths: .dashproject/, .loop/` —
@@ -264,6 +281,7 @@ dois ciclos no mesmo repo ao mesmo tempo.
 
 - Agrupar a árvore em múltiplos commits por assunto → **v2** (ADR-007).
 - Bump de versão, resolução de conflito, force push, amend — **nunca**, em versão
-  nenhuma sem ADR.
+  nenhuma sem ADR. *(Criar a tag/Release da versão que o agente já escreveu
+  **não** é bump — ver §1.11 e ADR-013.)*
 - Validar build/testes antes de commitar (o commit é checkpoint; validação é do
   agente principal).

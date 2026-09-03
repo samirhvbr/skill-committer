@@ -383,6 +383,75 @@ class CycleCase(unittest.TestCase):
         got = self.run_cycle("--quiet-min", "0")
         self.assertIn("push: off", got.stdout)
 
+    # ── ADR-013: tag e Release apos o push ───────────────────────────────
+
+    def _origin_de_verdade(self) -> None:
+        """Bare repo local como origin — push de verdade, sem rede."""
+        bare = self.root / "origin.git"
+        sh(self.root, "git", "init", "-q", "--bare", str(bare))
+        sh(self.repo, "git", "remote", "add", "origin", str(bare))
+
+    def _fake_release_sh(self, exit_code: int = 0) -> None:
+        """Dubla o tools/release.sh do repo. NENHUM teste desta suite chama o
+        `gh` de verdade — o contrato testado e "o ciclo invoca o script e trata
+        o codigo de saida", nao o que o GitHub faz com ele."""
+        tools = self.repo / "tools"
+        tools.mkdir(exist_ok=True)
+        script = tools / "release.sh"
+        script.write_text(
+            "#!/usr/bin/env bash\n"
+            f'echo "fake release chamado: $*"\nexit {exit_code}\n'
+        )
+        script.chmod(0o755)
+        sh(self.repo, "git", "add", "-A")
+        sh(self.repo, "git", "commit", "-q", "-m", "0.0.1 - Dubla o release.sh")
+
+    def test_release_off_no_marcador_nao_publica(self) -> None:
+        (self.repo / ".committer.yml").write_text(
+            "enabled: true\npush: true\nrelease: false\n")
+        sh(self.repo, "git", "add", ".committer.yml")
+        sh(self.repo, "git", "commit", "-q", "-m", "0.0.1 - Marcador sem release")
+        self._origin_de_verdade()
+        self.write_entrega("2.0.0", "Entrega sem release")
+        got = self.run_cycle("--quiet-min", "0")
+        self.assertIn("push OK", got.stdout)
+        self.assertIn("release: off no marcador", got.stdout)
+
+    def test_release_chama_o_script_do_repo_apos_push_ok(self) -> None:
+        (self.repo / ".committer.yml").write_text("enabled: true\npush: true\n")
+        sh(self.repo, "git", "add", ".committer.yml")
+        sh(self.repo, "git", "commit", "-q", "-m", "0.0.1 - Entra no committer")
+        self._origin_de_verdade()
+        self._fake_release_sh(exit_code=0)
+        self.write_entrega("2.1.0", "Entrega que vira Release")
+        got = self.run_cycle("--quiet-min", "0")
+        self.assertIn("push OK", got.stdout)
+        self.assertIn("release 2.1.0 OK", got.stdout)
+
+    def test_release_falho_nao_derruba_o_ciclo(self) -> None:
+        (self.repo / ".committer.yml").write_text("enabled: true\npush: true\n")
+        sh(self.repo, "git", "add", ".committer.yml")
+        sh(self.repo, "git", "commit", "-q", "-m", "0.0.1 - Entra no committer")
+        self._origin_de_verdade()
+        self._fake_release_sh(exit_code=1)
+        self.write_entrega("2.2.0", "Entrega com release quebrada")
+        got = self.run_cycle("--quiet-min", "0")
+        # O commit e o push continuam de pe: a Release e a segunda rede, nao o gate.
+        self.assertEqual(self.head_subject(), "2.2.0 - Entrega com release quebrada")
+        self.assertIn("push OK", got.stdout)
+        self.assertIn("release 2.2.0 FALHOU", got.stdout)
+        self.assertEqual(got.returncode, 0)
+
+    def test_release_nao_roda_quando_o_push_nao_rodou(self) -> None:
+        """Release aponta para commit que precisa existir no remoto. Sem push,
+        nao ha o que publicar."""
+        self.marker()  # push: false
+        self._fake_release_sh(exit_code=0)
+        self.write_entrega("2.3.0", "Entrega local sem push")
+        got = self.run_cycle("--quiet-min", "0")
+        self.assertIn("push: off", got.stdout)
+        self.assertNotIn("release 2.3.0", got.stdout)
+
     # ── ADR-003: lock ────────────────────────────────────────────────────
 
     def test_lock_concorrente_desiste_em_silencio(self) -> None:
