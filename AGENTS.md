@@ -123,8 +123,9 @@ marcador.
 
 ## Regras de escrita
 
-- **Idioma do repositório: PT-BR.** Artefatos que a skill produz (mensagens de
-  commit) também são em português — é o padrão da casa.
+- **Idioma do repositório: PT-BR** na documentação que já existe; **texto novo e
+  mensagem de commit são inglês (US)** desde 03/09/2026 (ADR-014 do repodocs). O
+  prompt de fallback da skill foi ajustado junto com aquele ADR.
 - Documentação durável → `docs/`. Notas de trabalho → `.continue/`. Contrato
   normativo → `SPEC.md`. Prompt do produto → `prompts/` (nunca na raiz com nome que
   ferramenta carrega sozinha — lição do ADR-007 do AUDITOR).
@@ -187,6 +188,13 @@ the task*, not a follow-up for someone else. If you are about to write
   heading *is* the subject.
 - No Conventional Commits prefix (`feat:`, `fix:`, `chore:`) and no vague
   subject ("update", "ajuste", "wip", "changes", "several improvements").
+
+**The bump is the one clause a repository may override — in writing.** If this
+repository's own documentation says the version is stamped some other way, and says
+why, follow that. Otherwise the line above applies to you. An override nobody wrote
+down is not an exception. Nothing else in this block bends: the changelog entry, the
+subject, the language, one subject per commit, and committing before you report done
+all hold regardless.
 
 **One subject per commit.** The subject has to describe the whole commit
 honestly. The moment your description needs an "and" to be true, it is two
