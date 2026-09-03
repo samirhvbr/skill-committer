@@ -88,7 +88,9 @@ template travaria todo commit do repo. A regra de **conteúdo** continua valendo
    > A **versão** continua saindo do `version.md`; o changelog só guarda o título.
 2. **Fallback (Sonnet):** senão → o subagente recebe `VERSION` (a atual do
    `version.md`, repetida — sancionado, ADR-002), `STAT` completo e `DIFF`
-   (truncado em 60 KB se preciso) e escreve **uma linha** honesta em português.
+   (truncado em 60 KB se preciso) e escreve **uma linha** honesta em **inglês (US)** —
+   ADR-014 do repodocs: tudo que vive no repositório é inglês, mensagem de commit
+   incluída.
    Prompt em [prompts/committer-fallback.md](prompts/committer-fallback.md). Se não
    conseguir descrever com especificidade, retorna `ABORT` e o repo fica para o
    próximo ciclo com aviso — **mensagem vaga é proibida**.

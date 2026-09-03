@@ -1,6 +1,6 @@
 # Versão — skill-COMMITTER
 
-**Versão atual:** `0.7.2`
+**Versão atual:** `0.7.3`
 
 > Este arquivo é a **fonte da verdade** da versão do projeto. Qualquer lugar que
 > precise exibir ou reportar a versão extrai o **primeiro número semver (`X.Y.Z`)**
@@ -67,6 +67,22 @@ COMMITTER usar a versão atual no fallback sem inventar número (ADR-002).
 
 > Ordem decrescente (mais recente no topo).
 
+### `0.7.3` — 2026-09-03 — A mensagem gerada passa a sair em inglês (US)
+
+O `repodocs` [ADR-014](https://github.com/samirhvbr/repodocs/blob/master/docs/decisions.md)
+estendeu a regra do inglês para **mensagem de commit**. Sem esta mudança, a skill
+contradiria a norma **a cada commit que ela mesma escrevesse** — e ela é o
+caminho automático, então seria a maior fonte de violação da frota.
+
+- `prompts/committer-fallback.md` pede a linha em **inglês (US)**, com o exemplo
+  traduzido junto (exemplo em português dentro de prompt que pede inglês é
+  instrução contraditória, e modelo segue o exemplo).
+- `SPEC.md` §1.7 acompanha, com o ponteiro para o ADR.
+
+O **caminho determinístico não muda**: ele copia o título da entrada de
+changelog, então o idioma da mensagem passa a ser o idioma que o agente escreveu
+no changelog — que é onde a regra já vale.
+
 ### `0.7.2` — 2026-09-02 — Regra de Releases no doc de agente: bump e Release sao um ato so
 
 Eco marcado da norma unica em samirhvbr/repodocs (docs/versioning.md). O
@@ -89,6 +105,7 @@ aquela versao.
 
 Tag e titulo = a versao pura, sem prefixo `v`. Norma:
 [samirhvbr/repodocs](https://github.com/samirhvbr/repodocs/blob/master/docs/versioning.md).
+
 
 ### `0.7.0` — 2026-09-02 — O ciclo passa a criar a tag e a Release da versão que o agente escreveu
 
