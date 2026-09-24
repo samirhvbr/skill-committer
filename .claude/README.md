@@ -1,31 +1,42 @@
-# Perfil de modelo Claude Code — skill-COMMITTER
+# Claude Code profile — skill-COMMITTER
 
-`.claude/` deste projeto segue o padrão dos repos Blue3/samirhvbr: **perfil de
-modelo + postura de permissões**. Núcleo previsto em Python 3 sem dependência
-externa; allow-list enxuta até a F1 existir.
+This project's `.claude/` follows the Blue3/samirhvbr house pattern: **effort and
+permissions posture**. It does **not** choose a model — see below. The core is
+planned in Python 3 with no external dependency; the allow-list stays lean until
+F1 exists.
 
-| Arquivo | Papel |
+| File | Role |
 |---------|-------|
-| `settings.json` | Perfil **ativo** (versionado). Opus-only `opus[1m]`, `effortLevel: xhigh`, `defaultMode: plan`, deny-list de segurança. |
-| `README.md` | Este arquivo. |
+| `settings.json` | **Active** profile (versioned). `effortLevel: xhigh`, `defaultMode: plan`, security deny-list. No model key. |
+| `README.md` | This file. |
 
-## Regras que valem lembrar
+## The model is not set here
 
-- **Não adicionar `CLAUDE_CODE_DISABLE_1M_CONTEXT`** — é ela que derruba a janela
-  para 200K.
-- **Effort `max` vai por sessão** (`/effort max`); o campo do JSON aceita até
+**The model is the user's choice, made per session with `/model`, and a subagent
+inherits it** (repodocs ADR-027). This repository pins nothing: `settings.json`
+carries no `model` or `fallbackModel`, and its `env` carries no
+`ANTHROPIC_MODEL`, `ANTHROPIC_DEFAULT_*_MODEL` or `CLAUDE_CODE_SUBAGENT_MODEL`.
+There are no stand-by profile files to copy over `settings.json` — `/model` does
+that job. The context window is whatever the chosen model provides; the
+repository neither guarantees nor overrides it.
+
+## Rules worth remembering
+
+- **Effort `max` goes per session** (`/effort max`); the JSON field accepts up to
   `xhigh`.
-- `crontab`/`systemctl` em **ask** de propósito: o produto instala gatilho de
-  agendamento (F2) — ninguém instala persistência na máquina sem o Samir ver. Mesma
-  postura do irmão AUDITOR.
-- `git filter-branch`/`filter-repo` negados: o auto-pusher de `~/x` faz
-  `pull --rebase` e desfaz reescrita — reescrever aqui só quebra o repo.
-- **Distinção importante:** o produto (a skill) commita e pusha nos repos **alvo**
-  quando estiver operando; *este* repositório segue o fluxo manual normal da casa
-  até lá.
+- `crontab`/`systemctl` are on **ask** on purpose: the product installs a
+  scheduling trigger (F2) — nobody installs persistence on the machine without
+  Samir seeing it. Same posture as its sibling AUDITOR.
+- `git filter-branch`/`filter-repo` denied: the `~/x` auto-pusher runs
+  `pull --rebase` and undoes a rewrite — rewriting here only breaks the repo.
+- **Important distinction:** the product (the skill) commits and pushes in the
+  **target** repos when it is operating; *this* repository follows the normal
+  manual house flow until then.
 
-## Modelo do produto vs modelo do desenvolvimento
+## Product model vs development model
 
-- Desenvolvimento deste repo: Opus (perfil acima).
-- **Fallback do produto: `sonnet`** — definido em `SPEC.md` §4 e no marcador
-  `.committer.yml` (`fallback: sonnet`); não é configurado por este `.claude/`.
+- Developing this repo: whichever model the user picked with `/model`; this
+  `.claude/` pins none.
+- **Product fallback: `sonnet`** — defined in `SPEC.md` §4 and in the
+  `.committer.yml` marker (`fallback: sonnet`); it is not configured by this
+  `.claude/`.

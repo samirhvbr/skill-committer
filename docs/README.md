@@ -1,42 +1,45 @@
-# Documentação técnica — skill-COMMITTER
+# Technical documentation — skill-COMMITTER
 
-Índice de `docs/`. Documentação **durável** mora aqui; notas de trabalho, escopo e
-estado em [`.continue/`](../.continue/); contrato normativo em [`SPEC.md`](../SPEC.md);
-prompt do produto em [`prompts/`](../prompts/).
+Index of `docs/`. **Durable** documentation lives here; working notes, scope and
+state in [`.continue/`](../.continue/); the normative contract in [`SPEC.md`](../SPEC.md);
+the product prompt in [`prompts/`](../prompts/).
 
-> Projeto em **F0**: proposta fechada, sem implementação. O que estiver marcado com
-> ⛔ no `SPEC.md` é lacuna conhecida, não esquecimento.
+> The project is at **F0**: the proposal is closed, with no implementation. Anything
+> marked ⛔ in `SPEC.md` is a known gap, not an oversight.
 
-## Nesta pasta
+## In this folder
 
-| Arquivo | O que é |
+| File | What it is |
 |---|---|
-| [decisoes.md](decisoes.md) | **ADRs.** ADR-001 a ADR-007 (todas as decisões da conversa de 29/07) + pendências P-01 a P-05. Decisão nova entra aqui. |
+| [decisoes.md](decisoes.md) | **ADRs.** ADR-001 to ADR-007 (every decision from the 29/07 conversation) plus open questions P-01 to P-05. A new decision goes here. |
 
-## Fora desta pasta
+## Outside this folder
 
-| Arquivo | O que é |
+| File | What it is |
 |---|---|
-| [../README.md](../README.md) | O produto: objetivo, pipeline resumido, limitações declaradas, bloco PS para os repos da casa. |
-| [../SPEC.md](../SPEC.md) | **Normativo.** Pipeline em 10 estágios, `.committer.yml`, gatilhos, estado. |
-| [../SECURITY.md](../SECURITY.md) | Modelo de ameaça (T-01 a T-07). **Leitura obrigatória.** |
-| [../prompts/committer-fallback.md](../prompts/committer-fallback.md) | Prompt do fallback Sonnet — artefato do produto. |
-| [../version.md](../version.md) | Fonte de verdade da versão, gatilhos de bump, formato de commit. |
-| [../CLAUDE.md](../CLAUDE.md) / [../AGENTS.md](../AGENTS.md) | Regras de quem desenvolve este repo. Espelhados — editar os dois. |
-| [../.continue/escopo-projeto.md](../.continue/escopo-projeto.md) | Fases F0–F4 + v2, com critério de pronto. |
-| [../.continue/estado-atual.md](../.continue/estado-atual.md) | Onde o projeto está e o que precisa do Samir. |
-| [../.claude/README.md](../.claude/README.md) | Perfil de modelo e postura de permissões. |
+| [../README.md](../README.md) | The product: purpose, pipeline summary, declared limitations, PS block for the house repos. |
+| [../SPEC.md](../SPEC.md) | **Normative.** The 10-stage pipeline, `.committer.yml`, triggers, state. |
+| [../SECURITY.md](../SECURITY.md) | Threat model (T-01 to T-07). **Required reading.** |
+| [../prompts/committer-fallback.md](../prompts/committer-fallback.md) | The Sonnet fallback prompt — a product artifact. |
+| [../version.md](../version.md) | Source of truth for the version, bump triggers, commit format. |
+| [../CLAUDE.md](../CLAUDE.md) / [../AGENTS.md](../AGENTS.md) | Rules for whoever develops this repo. Mirrored — edit both. |
+| [../.continue/escopo-projeto.md](../.continue/escopo-projeto.md) | Phases F0–F4 plus v2, each with its done criterion. |
+| [../.continue/estado-atual.md](../.continue/estado-atual.md) | Where the project stands and what needs Samir. |
+| [../.claude/README.md](../.claude/README.md) | Effort and permissions posture. The model is not set here — it is the user's choice via `/model`, and subagents inherit it (repodocs ADR-027). |
 
-## Por onde começar
+## Where to start
 
-- **Entender o produto** → `../README.md`, depois `decisoes.md`.
-- **Vai implementar (F1)** → `../SPEC.md` + `../SECURITY.md`, e o `redact.py` do
-  irmão AUDITOR (`~/x/SKILLS/skill-AUDITOR/skill/auditor/lib/redact.py`) para vendorizar.
-- **Vai mexer no prompt do fallback** → T-04 do `../SECURITY.md` primeiro.
+- **Understand the product** → `../README.md`, then `decisoes.md`.
+- **Going to implement (F1)** → `../SPEC.md` + `../SECURITY.md`, and the `redact.py`
+  of its sibling AUDITOR (`~/x/SKILLS/skill-AUDITOR/skill/auditor/lib/redact.py`) to vendor.
+- **Going to touch the fallback prompt** → T-04 of `../SECURITY.md` first.
 
-## Convenções
+## Conventions
 
-- PT-BR em tudo — inclusive nas mensagens de commit que a skill produz.
-- Documento novo aqui entra **neste índice** no mesmo commit.
-- Sem link para arquivo inexistente.
-- Fato observado ≠ inferência ≠ recomendação.
+- Language: existing documentation stays PT-BR; **new text, every edit, and commit
+  messages — including the ones the skill produces — are English (US)** since
+  03/09/2026 (repodocs ADR-014; see *Regras de escrita* in `../CLAUDE.md` and
+  `../prompts/committer-fallback.md`).
+- A new document here enters **this index** in the same commit.
+- No link to a file that does not exist.
+- Observed fact ≠ inference ≠ recommendation.
